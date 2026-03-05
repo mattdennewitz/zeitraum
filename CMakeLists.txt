@@ -60,7 +60,12 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(Catch2)
 
-add_executable(ZeitraumTests test/PluginTests.cpp ${PLUGIN_SOURCES})
+add_executable(ZeitraumTests
+    test/PluginTests.cpp
+    test/dsp/OnePoleSmoothTests.cpp
+    test/dsp/CharacterProcessorTests.cpp
+    ${PLUGIN_SOURCES}
+)
 target_include_directories(ZeitraumTests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(ZeitraumTests PRIVATE
     Catch2::Catch2WithMain
