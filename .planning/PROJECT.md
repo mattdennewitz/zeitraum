@@ -23,12 +23,12 @@ The feedback routing matrix and per-tap control over a shared serial delay line 
 - [ ] Full NxN feedback routing matrix (any tap or preset mix back to input with independent gain)
 - [ ] Cross-channel feedback routing for stereo
 - [ ] Smooth delay time modulation with doppler/tape artifacts (no zipper noise)
-- [ ] Delay range: ~10–150ms base, with multiplier dial extending to ~1.2s total
+- [ ] Delay range: ~10–150ms base, with multiplier dial extending to ~5s total
 - [ ] Tap time quantization in coarse increments (10ms steps) with saveable presets
 - [ ] All parameters DAW-automatable
 - [ ] Character approximation: bandwidth limiting, mild noise, gentle HF roll-off in delay path
 - [ ] Clean/modern DAW-style GUI
-- [ ] VST3, AU, and CLAP format support
+- [ ] VST3 and AU format support (CLAP deferred to v2)
 - [ ] JUCE project with Makefile-automated build (following three-sisters pattern)
 
 ### Out of Scope
@@ -60,9 +60,9 @@ The feedback routing matrix and per-tap control over a shared serial delay line 
 | Free-tap mode with equal-spacing preset (not separate modes) | Simpler UX, equal spacing is just a preset within the free system | — Pending |
 | Stereo in/out from v1 | Cross-feedback routing is core to the character | — Pending |
 | Full NxN feedback matrix | Flexible feedback networks are what make these modules special | — Pending |
-| CLAP support alongside VST3/AU | Modern format with growing adoption | — Pending |
+| CLAP deferred to v2 | Third-party extension, avoid blocking v1 on integration risk | — Pending |
 | Clean/modern GUI style | Fits alongside stock DAW plugins rather than hardware skeuomorphism | — Pending |
 | Follow three-sisters project structure | Proven JUCE + CMake + Makefile pattern | — Pending |
 
 ---
-*Last updated: 2026-03-05 after initialization*
+*Last updated: 2026-03-05 after requirements definition*

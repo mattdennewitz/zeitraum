@@ -86,40 +86,40 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CORE-01 | — | Pending |
-| CORE-02 | — | Pending |
-| CORE-03 | — | Pending |
-| CORE-04 | — | Pending |
-| CORE-05 | — | Pending |
-| CORE-06 | — | Pending |
-| CORE-07 | — | Pending |
-| CORE-08 | — | Pending |
-| CORE-09 | — | Pending |
-| FDBK-01 | — | Pending |
-| FDBK-02 | — | Pending |
-| FDBK-03 | — | Pending |
-| FDBK-04 | — | Pending |
-| MIX-01 | — | Pending |
-| MIX-02 | — | Pending |
-| MIX-03 | — | Pending |
-| INTG-01 | — | Pending |
-| INTG-02 | — | Pending |
-| INTG-03 | — | Pending |
-| INTG-04 | — | Pending |
-| INFR-01 | — | Pending |
-| INFR-02 | — | Pending |
-| INFR-03 | — | Pending |
-| INFR-04 | — | Pending |
-| GUI-01 | — | Pending |
-| GUI-02 | — | Pending |
-| GUI-03 | — | Pending |
-| GUI-04 | — | Pending |
+| CORE-01 | Phase 2 | Pending |
+| CORE-02 | Phase 2 | Pending |
+| CORE-03 | Phase 2 | Pending |
+| CORE-04 | Phase 2 | Pending |
+| CORE-05 | Phase 2 | Pending |
+| CORE-06 | Phase 2 | Pending |
+| CORE-07 | Phase 2 | Pending |
+| CORE-08 | Phase 2 | Pending |
+| CORE-09 | Phase 2 | Pending |
+| FDBK-01 | Phase 3 | Pending |
+| FDBK-02 | Phase 3 | Pending |
+| FDBK-03 | Phase 3 | Pending |
+| FDBK-04 | Phase 3 | Pending |
+| MIX-01 | Phase 2 | Pending |
+| MIX-02 | Phase 3 | Pending |
+| MIX-03 | Phase 3 | Pending |
+| INTG-01 | Phase 4 | Pending |
+| INTG-02 | Phase 4 | Pending |
+| INTG-03 | Phase 4 | Pending |
+| INTG-04 | Phase 2 | Pending |
+| INFR-01 | Phase 1 | Pending |
+| INFR-02 | Phase 1 | Pending |
+| INFR-03 | Phase 1 | Pending |
+| INFR-04 | Phase 2 | Pending |
+| GUI-01 | Phase 5 | Pending |
+| GUI-02 | Phase 5 | Pending |
+| GUI-03 | Phase 5 | Pending |
+| GUI-04 | Phase 2 | Pending |
 
 **Coverage:**
 - v1 requirements: 28 total
-- Mapped to phases: 0
-- Unmapped: 28
+- Mapped to phases: 28
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-05*
-*Last updated: 2026-03-05 after initial definition*
+*Last updated: 2026-03-05 after roadmap creation*
