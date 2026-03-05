@@ -7,6 +7,17 @@ ZeitraumProcessor::ZeitraumProcessor()
         .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       apvts(*this, nullptr, "PARAMETERS", createParameterLayout())
 {
+    baseDelayParam = apvts.getRawParameterValue("BASE_DELAY");
+    multiplierParam = apvts.getRawParameterValue("MULTIPLIER");
+    mixParam = apvts.getRawParameterValue("MIX");
+    characterParam = apvts.getRawParameterValue("CHARACTER");
+    quantizeParam = apvts.getRawParameterValue("QUANTIZE");
+
+    for (int i = 0; i < 8; ++i)
+    {
+        tapPosParams[i] = apvts.getRawParameterValue("TAP" + juce::String(i + 1) + "_POS");
+        tapLevelParams[i] = apvts.getRawParameterValue("TAP" + juce::String(i + 1) + "_LEVEL");
+    }
 }
 
 ZeitraumProcessor::~ZeitraumProcessor() {}
@@ -15,6 +26,55 @@ juce::AudioProcessorValueTreeState::ParameterLayout
 ZeitraumProcessor::createParameterLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
+
+    // Base delay time: 10-150ms, skewed toward lower values
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"BASE_DELAY", 1}, "Base Delay",
+        juce::NormalisableRange<float>(10.0f, 150.0f, 0.1f, 0.5f),
+        80.0f, "ms"));
+
+    // Multiplier: 1x to 33x (max total = 150*33 = 4950ms ~5s)
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"MULTIPLIER", 1}, "Multiplier",
+        juce::NormalisableRange<float>(1.0f, 33.0f, 0.01f, 0.4f),
+        1.0f, "x"));
+
+    // Wet/dry mix: 0-100%
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"MIX", 1}, "Mix",
+        juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
+        50.0f, "%"));
+
+    // Character: 0-100%
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"CHARACTER", 1}, "Character",
+        juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
+        25.0f, "%"));
+
+    // Quantize toggle
+    layout.add(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{"QUANTIZE", 1}, "Quantize", false));
+
+    // Per-tap parameters (8 taps)
+    for (int i = 1; i <= 8; ++i)
+    {
+        auto id = juce::String(i);
+
+        // Tap position: 0.0-1.0 ratio along delay line
+        layout.add(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID{"TAP" + id + "_POS", 1},
+            "Tap " + id + " Position",
+            juce::NormalisableRange<float>(0.0f, 1.0f, 0.001f),
+            static_cast<float>(i) / 8.0f));
+
+        // Tap level: 0.0-1.0 linear gain
+        layout.add(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID{"TAP" + id + "_LEVEL", 1},
+            "Tap " + id + " Level",
+            juce::NormalisableRange<float>(0.0f, 1.0f, 0.001f),
+            1.0f));
+    }
+
     return layout;
 }
 
@@ -22,16 +82,32 @@ const juce::String ZeitraumProcessor::getName() const { return "Zeitraum"; }
 bool ZeitraumProcessor::acceptsMidi() const { return false; }
 bool ZeitraumProcessor::producesMidi() const { return false; }
 bool ZeitraumProcessor::isMidiEffect() const { return false; }
-double ZeitraumProcessor::getTailLengthSeconds() const { return 0.0; }
+double ZeitraumProcessor::getTailLengthSeconds() const { return 150.0 * 33.0 / 1000.0; }
 int ZeitraumProcessor::getNumPrograms() { return 1; }
 int ZeitraumProcessor::getCurrentProgram() { return 0; }
 void ZeitraumProcessor::setCurrentProgram(int) {}
 const juce::String ZeitraumProcessor::getProgramName(int) { return {}; }
 void ZeitraumProcessor::changeProgramName(int, const juce::String&) {}
 
-void ZeitraumProcessor::prepareToPlay(double, int) {}
+void ZeitraumProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
+{
+    currentSampleRate = sampleRate;
 
-void ZeitraumProcessor::releaseResources() {}
+    delayEngine.prepare(sampleRate, samplesPerBlock);
+
+    juce::dsp::ProcessSpec spec;
+    spec.sampleRate = sampleRate;
+    spec.maximumBlockSize = static_cast<juce::uint32>(samplesPerBlock);
+    spec.numChannels = 2;
+    dryWetMixer.prepare(spec);
+    dryWetMixer.setWetMixProportion(mixParam->load() / 100.0f);
+}
+
+void ZeitraumProcessor::releaseResources()
+{
+    delayEngine.reset();
+    dryWetMixer.reset();
+}
 
 bool ZeitraumProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
@@ -48,11 +124,40 @@ void ZeitraumProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     juce::ScopedNoDenormals noDenormals;
     juce::ignoreUnused(midiMessages);
 
+    const int numSamples = buffer.getNumSamples();
+
+    // Update DryWetMixer proportion (smoothed internally by DryWetMixer)
+    dryWetMixer.setWetMixProportion(mixParam->load() / 100.0f);
+
+    // Push dry samples into DryWetMixer before processing
+    juce::dsp::AudioBlock<float> block(buffer);
+    dryWetMixer.pushDrySamples(block);
+
+    // Load parameter values atomically
+    float baseDelay = baseDelayParam->load();
+    float multiplier = multiplierParam->load();
+    float character = characterParam->load() / 100.0f;
+    bool quantize = quantizeParam->load() > 0.5f;
+
+    // Build tap position and level arrays from cached param pointers
+    float tapPositions[8];
+    float tapLevels[8];
+    for (int i = 0; i < 8; ++i)
+    {
+        tapPositions[i] = tapPosParams[i]->load();
+        tapLevels[i] = tapLevelParams[i]->load();
+    }
+
+    // Process delay engine (writes wet signal into buffer)
+    delayEngine.process(buffer, baseDelay, multiplier, character, quantize,
+                        tapPositions, tapLevels);
+
+    // Mix wet with dry via DryWetMixer
+    dryWetMixer.mixWetSamples(block);
+
     // Clear any extra output channels beyond what we process
     for (int ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
-        buffer.clear(ch, 0, buffer.getNumSamples());
-
-    // Pass-through: input buffer is already the output buffer, nothing to do
+        buffer.clear(ch, 0, numSamples);
 }
 
 bool ZeitraumProcessor::hasEditor() const { return true; }

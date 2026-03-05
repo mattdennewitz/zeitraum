@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
+#include "dsp/DelayEngine.h"
 
 class ZeitraumProcessor : public juce::AudioProcessor
 {
@@ -37,6 +38,20 @@ public:
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+
+    DelayEngine delayEngine;
+    juce::dsp::DryWetMixer<float> dryWetMixer;
+
+    // Cached parameter pointers (lock-free, realtime-safe)
+    std::atomic<float>* baseDelayParam = nullptr;
+    std::atomic<float>* multiplierParam = nullptr;
+    std::atomic<float>* mixParam = nullptr;
+    std::atomic<float>* characterParam = nullptr;
+    std::atomic<float>* quantizeParam = nullptr;
+    std::atomic<float>* tapPosParams[8] = {};
+    std::atomic<float>* tapLevelParams[8] = {};
+
+    double currentSampleRate = 44100.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ZeitraumProcessor)
 };
