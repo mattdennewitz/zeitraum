@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-last_updated: "2026-03-05T18:11:33Z"
+last_updated: "2026-03-05T18:29:00Z"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -23,29 +23,29 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 ## Current Position
 
 Phase: 2 of 5 (Core Delay Engine)
-Plan: 2 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-03-05 -- Completed 02-02-PLAN.md (TapReader and DelayEngine)
+Last activity: 2026-03-05 -- Completed 02-03-PLAN.md (Processor Integration)
 
-Progress: [████░░░░░░] 40%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
+- Total plans completed: 5
 - Average duration: 6min
-- Total execution time: 0.53 hours
+- Total execution time: 0.58 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-project-scaffolding | 2 | 8min | 4min |
-| 02-core-delay-engine | 2 | 24min | 12min |
+| 02-core-delay-engine | 3 | 27min | 9min |
 
 **Recent Trend:**
-- Last 5 plans: 6min, 2min, 8min, 16min
-- Trend: increasing (DSP complexity)
+- Last 5 plans: 2min, 8min, 16min, 3min
+- Trend: variable (integration tasks faster than DSP implementation)
 
 *Updated after each plan completion*
 
@@ -65,6 +65,8 @@ Recent decisions affecting current work:
 - CharacterProcessor noise level at 0.0005 (-66dBFS) at full character for subtle BBD authenticity
 - Last tap updates DelayLine read pointer (popSample updateReadPointer=true) -- research notes incorrect about false-for-all
 - Quantization tests use non-edge-case float values to avoid std::round precision issues
+- DelayEngine handles all per-sample smoothing internally -- no duplicate smoothers in processor
+- DryWetMixer manages mix smoothing internally via setWetMixProportion per block
 
 ### Pending Todos
 
@@ -79,5 +81,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: Completed 02-02-PLAN.md (TapReader and DelayEngine)
+Stopped at: Completed 02-03-PLAN.md (Processor Integration)
 Resume file: None

@@ -15,7 +15,7 @@
 - [x] **CORE-06**: Equal spacing is provided as the default tap preset
 - [x] **CORE-07**: Tap times can be quantized to 10ms increments
 - [ ] **CORE-08**: Tap time presets can be saved and recalled
-- [ ] **CORE-09**: User can control wet/dry mix globally
+- [x] **CORE-09**: User can control wet/dry mix globally
 
 ### Feedback & Routing
 
@@ -42,7 +42,7 @@
 - [x] **INFR-01**: Plugin builds as VST3 and AU formats
 - [x] **INFR-02**: Project uses CMake + Ninja with a Makefile automating all build tasks (following three-sisters pattern)
 - [x] **INFR-03**: AU validation passes via `auval`
-- [ ] **INFR-04**: Plugin runs glitch-free at standard buffer sizes (64–512 samples)
+- [x] **INFR-04**: Plugin runs glitch-free at standard buffer sizes (64–512 samples)
 
 ### GUI
 
@@ -94,7 +94,7 @@
 | CORE-06 | Phase 2 | Complete |
 | CORE-07 | Phase 2 | Complete |
 | CORE-08 | Phase 2 | Pending |
-| CORE-09 | Phase 2 | Pending |
+| CORE-09 | Phase 2 | Complete |
 | FDBK-01 | Phase 3 | Pending |
 | FDBK-02 | Phase 3 | Pending |
 | FDBK-03 | Phase 3 | Pending |
@@ -109,7 +109,7 @@
 | INFR-01 | Phase 1 | Complete |
 | INFR-02 | Phase 1 | Complete |
 | INFR-03 | Phase 1 | Complete |
-| INFR-04 | Phase 2 | Pending |
+| INFR-04 | Phase 2 | Complete |
 | GUI-01 | Phase 5 | Pending |
 | GUI-02 | Phase 5 | Pending |
 | GUI-03 | Phase 5 | Pending |
