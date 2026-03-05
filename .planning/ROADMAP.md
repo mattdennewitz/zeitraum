@@ -28,10 +28,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. Running `make build` produces VST3 and AU plugin binaries without errors
   2. Running `make validate` passes `auval` on the pass-through plugin
   3. Loading the plugin in a DAW shows it in the plugin list and passes audio through unchanged
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: TBD
+- [ ] 01-01-PLAN.md -- Build infrastructure, plugin source, tests, and CLAUDE.md
+- [ ] 01-02-PLAN.md -- AU validation and DAW verification checkpoint
 
 ### Phase 2: Core Delay Engine
 **Goal**: Users hear a functional stereo 8-tap delay with independent tap positioning, per-tap levels, wet/dry mix, delay time multiplier, tap quantization, and analog character -- the sonic foundation of the product
@@ -98,7 +99,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Project Scaffolding | 0/1 | Not started | - |
+| 1. Project Scaffolding | 0/2 | Planned | - |
 | 2. Core Delay Engine | 0/3 | Not started | - |
 | 3. Feedback Matrix | 0/2 | Not started | - |
 | 4. DAW Integration | 0/1 | Not started | - |
