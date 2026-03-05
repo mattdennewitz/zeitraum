@@ -39,9 +39,9 @@
 
 ### Plugin Infrastructure
 
-- [ ] **INFR-01**: Plugin builds as VST3 and AU formats
-- [ ] **INFR-02**: Project uses CMake + Ninja with a Makefile automating all build tasks (following three-sisters pattern)
-- [ ] **INFR-03**: AU validation passes via `auval`
+- [x] **INFR-01**: Plugin builds as VST3 and AU formats
+- [x] **INFR-02**: Project uses CMake + Ninja with a Makefile automating all build tasks (following three-sisters pattern)
+- [x] **INFR-03**: AU validation passes via `auval`
 - [ ] **INFR-04**: Plugin runs glitch-free at standard buffer sizes (64–512 samples)
 
 ### GUI
@@ -106,9 +106,9 @@
 | INTG-02 | Phase 4 | Pending |
 | INTG-03 | Phase 4 | Pending |
 | INTG-04 | Phase 2 | Pending |
-| INFR-01 | Phase 1 | Pending |
-| INFR-02 | Phase 1 | Pending |
-| INFR-03 | Phase 1 | Pending |
+| INFR-01 | Phase 1 | Complete |
+| INFR-02 | Phase 1 | Complete |
+| INFR-03 | Phase 1 | Complete |
 | INFR-04 | Phase 2 | Pending |
 | GUI-01 | Phase 5 | Pending |
 | GUI-02 | Phase 5 | Pending |
