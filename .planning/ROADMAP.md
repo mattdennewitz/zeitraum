@@ -44,12 +44,13 @@ Plans:
   3. Tap times can be quantized to 10ms steps and tap presets (including equal-spacing default) can be saved and recalled
   4. Delay path exhibits audible analog character (HF roll-off, subtle warmth) compared to a clean bypass
   5. Plugin runs glitch-free at 64-sample buffer sizes at 44.1kHz and 96kHz sample rates
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
-- [ ] 02-03: TBD
+- [ ] 02-01-PLAN.md -- OnePoleSmooth and CharacterProcessor DSP helpers with unit tests
+- [ ] 02-02-PLAN.md -- TapReader and DelayEngine DSP classes with unit tests
+- [ ] 02-03-PLAN.md -- Parameter layout, processor wiring, and integration tests
+- [ ] 02-04-PLAN.md -- Tap presets, AU validation, and DAW listening checkpoint
 
 ### Phase 3: Feedback Matrix
 **Goal**: Users can route any combination of tap outputs and preset mixes back into the delay input with independent gain, producing the complex evolving textures that define this plugin
@@ -100,7 +101,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Project Scaffolding | 2/2 | Complete | 2026-03-05 |
-| 2. Core Delay Engine | 0/3 | Not started | - |
+| 2. Core Delay Engine | 0/4 | Not started | - |
 | 3. Feedback Matrix | 0/2 | Not started | - |
 | 4. DAW Integration | 0/1 | Not started | - |
 | 5. GUI | 0/1 | Not started | - |
