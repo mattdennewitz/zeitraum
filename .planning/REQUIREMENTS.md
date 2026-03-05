@@ -35,7 +35,7 @@
 - [ ] **INTG-01**: All parameters are DAW-automatable
 - [ ] **INTG-02**: Tempo sync is available (on/off toggle) with host BPM and note divisions (1/4, 1/8, dotted, triplet)
 - [ ] **INTG-03**: Plugin state (all parameters + tap presets) saves and restores with DAW session
-- [ ] **INTG-04**: Analog character approximation: bandwidth limiting, mild noise, gentle HF roll-off in delay path
+- [x] **INTG-04**: Analog character approximation: bandwidth limiting, mild noise, gentle HF roll-off in delay path
 
 ### Plugin Infrastructure
 
@@ -49,7 +49,7 @@
 - [ ] **GUI-01**: Clean/modern DAW-style GUI (not skeuomorphic)
 - [ ] **GUI-02**: Visual display of tap positions and timing
 - [ ] **GUI-03**: Per-tap level controls visible and adjustable in GUI
-- [ ] **GUI-04**: Smooth parameter changes throughout (no clicks or zipper noise)
+- [x] **GUI-04**: Smooth parameter changes throughout (no clicks or zipper noise)
 
 ## v2 Requirements
 
@@ -105,7 +105,7 @@
 | INTG-01 | Phase 4 | Pending |
 | INTG-02 | Phase 4 | Pending |
 | INTG-03 | Phase 4 | Pending |
-| INTG-04 | Phase 2 | Pending |
+| INTG-04 | Phase 2 | Complete |
 | INFR-01 | Phase 1 | Complete |
 | INFR-02 | Phase 1 | Complete |
 | INFR-03 | Phase 1 | Complete |
@@ -113,7 +113,7 @@
 | GUI-01 | Phase 5 | Pending |
 | GUI-02 | Phase 5 | Pending |
 | GUI-03 | Phase 5 | Pending |
-| GUI-04 | Phase 2 | Pending |
+| GUI-04 | Phase 2 | Complete |
 
 **Coverage:**
 - v1 requirements: 28 total

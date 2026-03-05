@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-05T17:25:21.807Z"
+status: in-progress
+last_updated: "2026-03-05T18:11:33Z"
 progress:
-  total_phases: 1
+  total_phases: 5
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 6
+  completed_plans: 3
 ---
 
 # Project State
@@ -18,33 +18,34 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** The feedback routing matrix and per-tap control over a shared serial delay line -- creating complex, evolving delay textures
-**Current focus:** Phase 1: Project Scaffolding
+**Current focus:** Phase 2: Core Delay Engine
 
 ## Current Position
 
-Phase: 1 of 5 (Project Scaffolding) -- COMPLETE
-Plan: 2 of 2 in current phase
-Status: Phase complete
-Last activity: 2026-03-05 -- Completed 01-02-PLAN.md (phase 1 done)
+Phase: 2 of 5 (Core Delay Engine)
+Plan: 1 of 4 in current phase
+Status: In progress
+Last activity: 2026-03-05 -- Completed 02-01-PLAN.md (DSP helpers)
 
-Progress: [██░░░░░░░░] 20%
+Progress: [███░░░░░░░] 30%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 4min
-- Total execution time: 0.13 hours
+- Total plans completed: 3
+- Average duration: 5min
+- Total execution time: 0.27 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-project-scaffolding | 2 | 8min | 4min |
+| 02-core-delay-engine | 1 | 8min | 8min |
 
 **Recent Trend:**
-- Last 5 plans: 6min, 2min
-- Trend: -
+- Last 5 plans: 6min, 2min, 8min
+- Trend: stable
 
 *Updated after each plan completion*
 
@@ -60,6 +61,8 @@ Recent decisions affecting current work:
 - Empty APVTS parameter layout -- parameters added in Phase 2
 - No code changes needed for 01-02 -- scaffold passed auval and DAW verification on first attempt
 - Phase 1 complete: all infrastructure requirements (INFR-01, INFR-02, INFR-03) verified
+- OnePoleSmooth uses fixed-size array filter per channel for zero-allocation audio-thread safety
+- CharacterProcessor noise level at 0.0005 (-66dBFS) at full character for subtle BBD authenticity
 
 ### Pending Todos
 
@@ -74,5 +77,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: Completed 01-02-PLAN.md (Phase 1 complete)
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None
