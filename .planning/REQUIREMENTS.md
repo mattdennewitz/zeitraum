@@ -7,13 +7,13 @@
 
 ### Delay Core
 
-- [ ] **CORE-01**: Plugin provides 8 delay taps along a shared serial delay line (stereo, one line per channel)
-- [ ] **CORE-02**: User can set delay time with base range ~10–150ms
-- [ ] **CORE-03**: User can scale all tap times proportionally via a multiplier dial (total up to ~5s)
-- [ ] **CORE-04**: User can adjust individual level for each of the 8 taps
-- [ ] **CORE-05**: User can position each tap freely along the delay line (not fixed equal spacing)
-- [ ] **CORE-06**: Equal spacing is provided as the default tap preset
-- [ ] **CORE-07**: Tap times can be quantized to 10ms increments
+- [x] **CORE-01**: Plugin provides 8 delay taps along a shared serial delay line (stereo, one line per channel)
+- [x] **CORE-02**: User can set delay time with base range ~10–150ms
+- [x] **CORE-03**: User can scale all tap times proportionally via a multiplier dial (total up to ~5s)
+- [x] **CORE-04**: User can adjust individual level for each of the 8 taps
+- [x] **CORE-05**: User can position each tap freely along the delay line (not fixed equal spacing)
+- [x] **CORE-06**: Equal spacing is provided as the default tap preset
+- [x] **CORE-07**: Tap times can be quantized to 10ms increments
 - [ ] **CORE-08**: Tap time presets can be saved and recalled
 - [ ] **CORE-09**: User can control wet/dry mix globally
 
@@ -26,7 +26,7 @@
 
 ### Mixing & Output
 
-- [ ] **MIX-01**: Plugin operates in stereo (stereo input, stereo output)
+- [x] **MIX-01**: Plugin operates in stereo (stereo input, stereo output)
 - [ ] **MIX-02**: Plugin provides preset mixes: odd taps, even taps, rising-level, falling-level
 - [ ] **MIX-03**: Preset mixes are available as feedback sources in the routing matrix
 
@@ -86,20 +86,20 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CORE-01 | Phase 2 | Pending |
-| CORE-02 | Phase 2 | Pending |
-| CORE-03 | Phase 2 | Pending |
-| CORE-04 | Phase 2 | Pending |
-| CORE-05 | Phase 2 | Pending |
-| CORE-06 | Phase 2 | Pending |
-| CORE-07 | Phase 2 | Pending |
+| CORE-01 | Phase 2 | Complete |
+| CORE-02 | Phase 2 | Complete |
+| CORE-03 | Phase 2 | Complete |
+| CORE-04 | Phase 2 | Complete |
+| CORE-05 | Phase 2 | Complete |
+| CORE-06 | Phase 2 | Complete |
+| CORE-07 | Phase 2 | Complete |
 | CORE-08 | Phase 2 | Pending |
 | CORE-09 | Phase 2 | Pending |
 | FDBK-01 | Phase 3 | Pending |
 | FDBK-02 | Phase 3 | Pending |
 | FDBK-03 | Phase 3 | Pending |
 | FDBK-04 | Phase 3 | Pending |
-| MIX-01 | Phase 2 | Pending |
+| MIX-01 | Phase 2 | Complete |
 | MIX-02 | Phase 3 | Pending |
 | MIX-03 | Phase 3 | Pending |
 | INTG-01 | Phase 4 | Pending |
