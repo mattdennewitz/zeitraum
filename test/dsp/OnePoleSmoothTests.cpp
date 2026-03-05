@@ -71,7 +71,7 @@ TEST_CASE("OnePoleSmooth alpha formula matches CLAUDE.md", "[smoother]")
 
     // After one sample: current = 0 + alpha * (1 - 0) = alpha
     float firstSample = smoother.getNextValue();
-    REQUIRE_THAT(firstSample, WithinRel(expectedAlpha, 0.001));
+    REQUIRE_THAT(firstSample, WithinRel(expectedAlpha, 0.001f));
 }
 
 TEST_CASE("OnePoleSmooth default values", "[smoother]")
