@@ -174,6 +174,81 @@ TEST_CASE("State round-trip preserves parameters", "[state]") {
     REQUIRE_THAT(load("TAP3_POS"), Catch::Matchers::WithinAbs(0.5, 0.01));
 }
 
+TEST_CASE("Tap preset save and recall", "[preset]") {
+    ZeitraumProcessor proc;
+
+    // Change TAP1_POS to 0.9
+    if (auto* param = proc.apvts.getParameter("TAP1_POS"))
+        param->setValueNotifyingHost(param->convertTo0to1(0.9f));
+
+    proc.saveTapPreset("custom");
+
+    // Reset TAP1_POS to default (0.125)
+    if (auto* param = proc.apvts.getParameter("TAP1_POS"))
+        param->setValueNotifyingHost(param->convertTo0to1(0.125f));
+
+    // Verify it changed
+    REQUIRE_THAT(proc.apvts.getRawParameterValue("TAP1_POS")->load(),
+                 Catch::Matchers::WithinAbs(0.125, 0.01));
+
+    // Recall the preset
+    proc.recallTapPreset("custom");
+
+    // Verify TAP1_POS is back to ~0.9
+    REQUIRE_THAT(proc.apvts.getRawParameterValue("TAP1_POS")->load(),
+                 Catch::Matchers::WithinAbs(0.9, 0.01));
+}
+
+TEST_CASE("Tap preset persists in state", "[preset][state]") {
+    juce::MemoryBlock savedState;
+    {
+        ZeitraumProcessor proc;
+
+        // Change some tap positions
+        if (auto* param = proc.apvts.getParameter("TAP2_POS"))
+            param->setValueNotifyingHost(param->convertTo0to1(0.7f));
+        if (auto* param = proc.apvts.getParameter("TAP5_POS"))
+            param->setValueNotifyingHost(param->convertTo0to1(0.33f));
+
+        proc.saveTapPreset("my-preset");
+        proc.getStateInformation(savedState);
+    }
+
+    REQUIRE(savedState.getSize() > 0);
+
+    ZeitraumProcessor proc2;
+    proc2.setStateInformation(savedState.getData(),
+                               static_cast<int>(savedState.getSize()));
+
+    // Verify preset name exists
+    auto names = proc2.getTapPresetNames();
+    REQUIRE(names.contains("my-preset"));
+
+    // Reset tap positions to defaults, then recall
+    if (auto* param = proc2.apvts.getParameter("TAP2_POS"))
+        param->setValueNotifyingHost(param->convertTo0to1(0.25f));
+
+    proc2.recallTapPreset("my-preset");
+
+    REQUIRE_THAT(proc2.apvts.getRawParameterValue("TAP2_POS")->load(),
+                 Catch::Matchers::WithinAbs(0.7, 0.01));
+    REQUIRE_THAT(proc2.apvts.getRawParameterValue("TAP5_POS")->load(),
+                 Catch::Matchers::WithinAbs(0.33, 0.01));
+}
+
+TEST_CASE("Recall nonexistent preset does nothing", "[preset]") {
+    ZeitraumProcessor proc;
+
+    // Record current positions
+    float originalPos = proc.apvts.getRawParameterValue("TAP1_POS")->load();
+
+    // Recall a nonexistent preset -- should not crash or change anything
+    proc.recallTapPreset("does-not-exist");
+
+    REQUIRE_THAT(proc.apvts.getRawParameterValue("TAP1_POS")->load(),
+                 Catch::Matchers::WithinAbs(static_cast<double>(originalPos), 0.001));
+}
+
 TEST_CASE("Stereo channels both produce output", "[processor][dsp]") {
     ZeitraumProcessor proc;
     proc.prepareToPlay(44100.0, 512);

@@ -34,6 +34,11 @@ public:
 
     bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
 
+    // Tap preset management
+    void saveTapPreset(const juce::String& name);
+    void recallTapPreset(const juce::String& name);
+    juce::StringArray getTapPresetNames() const;
+
     juce::AudioProcessorValueTreeState apvts;
 
 private:

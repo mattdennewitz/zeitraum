@@ -167,6 +167,69 @@ juce::AudioProcessorEditor* ZeitraumProcessor::createEditor()
     return new juce::GenericAudioProcessorEditor(*this);
 }
 
+void ZeitraumProcessor::saveTapPreset(const juce::String& name)
+{
+    auto presetsNode = apvts.state.getOrCreateChildWithName("TapPresets", nullptr);
+
+    // Remove existing preset with same name
+    for (int i = presetsNode.getNumChildren() - 1; i >= 0; --i)
+    {
+        if (presetsNode.getChild(i).getProperty("name").toString() == name)
+            presetsNode.removeChild(i, nullptr);
+    }
+
+    juce::ValueTree preset("TapPreset");
+    preset.setProperty("name", name, nullptr);
+
+    for (int i = 1; i <= 8; ++i)
+    {
+        auto paramId = "TAP" + juce::String(i) + "_POS";
+        auto* param = apvts.getRawParameterValue(paramId);
+        if (param != nullptr)
+            preset.setProperty(juce::Identifier(paramId), param->load(), nullptr);
+    }
+
+    presetsNode.appendChild(preset, nullptr);
+}
+
+void ZeitraumProcessor::recallTapPreset(const juce::String& name)
+{
+    auto presetsNode = apvts.state.getChildWithName("TapPresets");
+    if (!presetsNode.isValid())
+        return;
+
+    for (int i = 0; i < presetsNode.getNumChildren(); ++i)
+    {
+        auto preset = presetsNode.getChild(i);
+        if (preset.getProperty("name").toString() == name)
+        {
+            for (int t = 1; t <= 8; ++t)
+            {
+                auto paramId = "TAP" + juce::String(t) + "_POS";
+                if (preset.hasProperty(juce::Identifier(paramId)))
+                {
+                    float value = static_cast<float>(preset.getProperty(juce::Identifier(paramId)));
+                    if (auto* param = apvts.getParameter(paramId))
+                        param->setValueNotifyingHost(param->convertTo0to1(value));
+                }
+            }
+            return;
+        }
+    }
+}
+
+juce::StringArray ZeitraumProcessor::getTapPresetNames() const
+{
+    juce::StringArray names;
+    auto presetsNode = apvts.state.getChildWithName("TapPresets");
+    if (presetsNode.isValid())
+    {
+        for (int i = 0; i < presetsNode.getNumChildren(); ++i)
+            names.add(presetsNode.getChild(i).getProperty("name").toString());
+    }
+    return names;
+}
+
 void ZeitraumProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
