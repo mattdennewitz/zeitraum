@@ -5,6 +5,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <algorithm>
+#include <vector>
 
 class DelayEngine
 {
@@ -16,6 +17,7 @@ public:
     void prepare(double sampleRate, int maxBlockSize)
     {
         sr = sampleRate;
+        blockSize = maxBlockSize;
 
         // Max delay: 150ms * 33 * sampleRate
         int maxDelaySamples = static_cast<int>(std::ceil(
@@ -41,12 +43,25 @@ public:
 
         characterProcessor.prepare(sampleRate, 2);
 
+        // Smoothing times: longer for delay-time parameters to avoid
+        // read-pointer discontinuities that cause audible clicks
         baseDelaySmoother.setSampleRate(sampleRate);
-        baseDelaySmoother.setTimeMs(10.0f);
+        baseDelaySmoother.setTimeMs(50.0f);
         multiplierSmoother.setSampleRate(sampleRate);
-        multiplierSmoother.setTimeMs(10.0f);
+        multiplierSmoother.setTimeMs(50.0f);
         characterSmoother.setSampleRate(sampleRate);
         characterSmoother.setTimeMs(10.0f);
+
+        // Allocate scratch buffers for per-sample smoothed values
+        smoothedBaseDelay.resize(static_cast<size_t>(maxBlockSize));
+        smoothedMultiplier.resize(static_cast<size_t>(maxBlockSize));
+        smoothedCharacter.resize(static_cast<size_t>(maxBlockSize));
+
+        for (int t = 0; t < numTaps; ++t)
+        {
+            smoothedTapDelay[t].resize(static_cast<size_t>(maxBlockSize));
+            smoothedTapLevel[t].resize(static_cast<size_t>(maxBlockSize));
+        }
     }
 
     void process(juce::AudioBuffer<float>& buffer,
@@ -72,29 +87,42 @@ public:
             taps[t].setLevel(tapLevels[t]);
         }
 
+        // Pre-compute per-sample smoothed values for base delay, multiplier,
+        // character, and tap delay/level so they advance exactly once per sample
+        // (not once per channel).
+        for (size_t i = 0; i < static_cast<size_t>(numSamples); ++i)
+        {
+            smoothedBaseDelay[i] = baseDelaySmoother.getNextValue();
+            smoothedMultiplier[i] = multiplierSmoother.getNextValue();
+            smoothedCharacter[i] = characterSmoother.getNextValue();
+
+            for (int t = 0; t < numTaps; ++t)
+            {
+                smoothedTapDelay[t][i] = taps[t].getDelaySamples(
+                    smoothedBaseDelay[i], smoothedMultiplier[i], sr, quantize);
+                smoothedTapLevel[t][i] = taps[t].getLevel();
+            }
+        }
+
         for (int ch = 0; ch < numChannels; ++ch)
         {
             auto* channelData = buffer.getWritePointer(ch);
 
-            for (int i = 0; i < numSamples; ++i)
+            for (size_t i = 0; i < static_cast<size_t>(numSamples); ++i)
             {
-                float baseMs = baseDelaySmoother.getNextValue();
-                float mult = multiplierSmoother.getNextValue();
-                float character = characterSmoother.getNextValue();
-
                 // Apply character to input before pushing to delay line
-                float processed = characterProcessor.process(ch, channelData[i], character);
+                float processed = characterProcessor.process(ch, channelData[i],
+                                                              smoothedCharacter[i]);
                 delayLine[ch].pushSample(0, processed);
 
                 // Sum taps -- last tap updates read pointer
                 float wetSample = 0.0f;
                 for (int t = 0; t < numTaps; ++t)
                 {
-                    float delaySamples = taps[t].getDelaySamples(baseMs, mult, sr, quantize);
-                    float level = taps[t].getLevel();
                     bool isLastTap = (t == numTaps - 1);
-                    float tapOut = delayLine[ch].popSample(0, delaySamples, isLastTap);
-                    wetSample += tapOut * level;
+                    float tapOut = delayLine[ch].popSample(0,
+                        smoothedTapDelay[t][i], isLastTap);
+                    wetSample += tapOut * smoothedTapLevel[t][i];
                 }
 
                 channelData[i] = wetSample;
@@ -126,5 +154,14 @@ private:
     OnePoleSmooth multiplierSmoother;
     OnePoleSmooth characterSmoother;
 
+    // Pre-allocated scratch buffers for per-sample smoothed values
+    // (allocated in prepare, read in process -- no audio-thread allocation)
+    std::vector<float> smoothedBaseDelay;
+    std::vector<float> smoothedMultiplier;
+    std::vector<float> smoothedCharacter;
+    std::vector<float> smoothedTapDelay[numTaps];
+    std::vector<float> smoothedTapLevel[numTaps];
+
     double sr = 44100.0;
+    int blockSize = 512;
 };

@@ -14,7 +14,7 @@ public:
     void prepare(double sampleRate)
     {
         positionSmoother.setSampleRate(sampleRate);
-        positionSmoother.setTimeMs(10.0f);
+        positionSmoother.setTimeMs(50.0f);
 
         levelSmoother.setSampleRate(sampleRate);
         levelSmoother.setTimeMs(5.0f);
