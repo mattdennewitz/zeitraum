@@ -22,6 +22,15 @@ namespace
         }
     };
 
+    struct FeedbackConfig
+    {
+        float gains[12] = {};  // 8 tap gains + 4 preset mix gains (all zero by default)
+        float hpFreq = 20.0f;
+        float lpFreq = 20000.0f;
+        bool hpOn = false;
+        bool lpOn = false;
+    };
+
     // Run warmup blocks to settle smoothers before the impulse test
     void warmup(DelayEngine& engine, int numSamples, float baseDelayMs, float multiplier,
                 float characterAmount, bool quantize, const float* positions, const float* levels)
@@ -34,6 +43,24 @@ namespace
             juce::AudioBuffer<float> buf(2, thisBlock);
             buf.clear();
             engine.process(buf, baseDelayMs, multiplier, characterAmount, quantize, positions, levels);
+            processed += thisBlock;
+        }
+    }
+
+    // Feedback-aware warmup
+    void warmupFb(DelayEngine& engine, int numSamples, float baseDelayMs, float multiplier,
+                  float characterAmount, bool quantize, const float* positions, const float* levels,
+                  const FeedbackConfig& fb)
+    {
+        const int blockSize = 512;
+        int processed = 0;
+        while (processed < numSamples)
+        {
+            int thisBlock = std::min(blockSize, numSamples - processed);
+            juce::AudioBuffer<float> buf(2, thisBlock);
+            buf.clear();
+            engine.process(buf, baseDelayMs, multiplier, characterAmount, quantize,
+                           positions, levels, fb.gains, fb.hpFreq, fb.lpFreq, fb.hpOn, fb.lpOn);
             processed += thisBlock;
         }
     }
@@ -367,4 +394,329 @@ TEST_CASE("DelayEngine clean delay with characterAmount 0", "[delayengine]")
         peakVal = std::max(peakVal, std::abs(buffer.getSample(0, i)));
 
     REQUIRE(peakVal > 0.8f);
+}
+
+// ============================================================
+// Feedback integration tests
+// ============================================================
+
+TEST_CASE("DelayEngine feedback produces repeating echoes", "[delayengine][feedback]")
+{
+    DelayEngine engine;
+    const double sampleRate = 44100.0;
+    const int blockSize = 4096;
+    engine.prepare(sampleRate, blockSize);
+
+    TapConfig config;
+    // Single tap at position 1.0, all others muted
+    for (int i = 0; i < 8; ++i)
+        config.levels[i] = 0.0f;
+    config.positions[0] = 1.0f;
+    config.levels[0] = 1.0f;
+
+    FeedbackConfig fb;
+    fb.gains[0] = 1.0f; // FB_TAP1 at 100%
+
+    // Warmup to settle smoothers (including feedback gain smoothers)
+    warmupFb(engine, 44100, 20.0f, 1.0f, 0.0f, false,
+             config.positions, config.levels, fb);
+
+    // Send impulse and collect 4 seconds of output
+    const int totalSamples = static_cast<int>(sampleRate * 4.0);
+    std::vector<float> output;
+    output.reserve(static_cast<size_t>(totalSamples));
+
+    // First block: impulse at sample 0
+    {
+        juce::AudioBuffer<float> buf(2, blockSize);
+        buf.clear();
+        buf.setSample(0, 0, 1.0f);
+        buf.setSample(1, 0, 1.0f);
+        engine.process(buf, 20.0f, 1.0f, 0.0f, false,
+                       config.positions, config.levels,
+                       fb.gains, fb.hpFreq, fb.lpFreq, fb.hpOn, fb.lpOn);
+        for (int i = 0; i < blockSize; ++i)
+            output.push_back(buf.getSample(0, i));
+    }
+
+    // Remaining blocks: silence input
+    int remaining = totalSamples - blockSize;
+    while (remaining > 0)
+    {
+        int thisBlock = std::min(blockSize, remaining);
+        juce::AudioBuffer<float> buf(2, thisBlock);
+        buf.clear();
+        engine.process(buf, 20.0f, 1.0f, 0.0f, false,
+                       config.positions, config.levels,
+                       fb.gains, fb.hpFreq, fb.lpFreq, fb.hpOn, fb.lpOn);
+        for (int i = 0; i < thisBlock; ++i)
+            output.push_back(buf.getSample(0, i));
+        remaining -= thisBlock;
+    }
+
+    // Count peaks: with feedback at 100% on tap1 at 20ms delay,
+    // we should get many repeating echoes (>8 = more than single pass)
+    const float threshold = 0.05f;
+    int peakCount = 0;
+    bool inPeak = false;
+    for (size_t i = 50; i < output.size(); ++i)
+    {
+        float val = std::abs(output[i]);
+        if (val > threshold && !inPeak)
+        {
+            peakCount++;
+            inPeak = true;
+        }
+        else if (val < threshold * 0.5f)
+        {
+            inPeak = false;
+        }
+    }
+
+    INFO("peakCount=" << peakCount);
+    REQUIRE(peakCount > 8);
+
+    // Verify signal stays bounded (saturator working)
+    float maxAmp = 0.0f;
+    for (size_t i = 0; i < output.size(); ++i)
+        maxAmp = std::max(maxAmp, std::abs(output[i]));
+
+    INFO("maxAmp=" << maxAmp);
+    REQUIRE(maxAmp < 1.5f);
+}
+
+TEST_CASE("DelayEngine feedback at zero matches non-feedback behavior", "[delayengine][feedback]")
+{
+    const double sampleRate = 44100.0;
+    const int blockSize = 1024;
+
+    TapConfig config;
+    for (int i = 0; i < 8; ++i)
+        config.levels[i] = 0.0f;
+    config.positions[0] = 1.0f;
+    config.levels[0] = 1.0f;
+
+    FeedbackConfig fb; // all zeros
+
+    // Engine A: using backward-compatible overload (no feedback)
+    DelayEngine engineA;
+    engineA.prepare(sampleRate, blockSize);
+    warmup(engineA, 44100, 10.0f, 1.0f, 0.0f, false, config.positions, config.levels);
+
+    juce::AudioBuffer<float> bufA(2, blockSize);
+    bufA.clear();
+    bufA.setSample(0, 0, 1.0f);
+    bufA.setSample(1, 0, 1.0f);
+    engineA.process(bufA, 10.0f, 1.0f, 0.0f, false, config.positions, config.levels);
+
+    // Engine B: using feedback overload with zero gains
+    DelayEngine engineB;
+    engineB.prepare(sampleRate, blockSize);
+    warmupFb(engineB, 44100, 10.0f, 1.0f, 0.0f, false,
+             config.positions, config.levels, fb);
+
+    juce::AudioBuffer<float> bufB(2, blockSize);
+    bufB.clear();
+    bufB.setSample(0, 0, 1.0f);
+    bufB.setSample(1, 0, 1.0f);
+    engineB.process(bufB, 10.0f, 1.0f, 0.0f, false,
+                    config.positions, config.levels,
+                    fb.gains, fb.hpFreq, fb.lpFreq, fb.hpOn, fb.lpOn);
+
+    // Outputs should be identical
+    float maxDiff = 0.0f;
+    for (int i = 0; i < blockSize; ++i)
+    {
+        float diff = std::abs(bufA.getSample(0, i) - bufB.getSample(0, i));
+        maxDiff = std::max(maxDiff, diff);
+    }
+
+    INFO("maxDiff=" << maxDiff);
+    REQUIRE(maxDiff < 1e-5f);
+}
+
+TEST_CASE("DelayEngine max feedback stability", "[delayengine][feedback]")
+{
+    // Test that feedback with a single tap at 100% produces bounded output.
+    // The saturator bounds the feedback bus to [-1,+1] inside the delay line.
+    // With a single active tap, the wet output should stay bounded.
+    DelayEngine engine;
+    const double sampleRate = 44100.0;
+    const int blockSize = 512;
+    engine.prepare(sampleRate, blockSize);
+
+    TapConfig config;
+    // Single tap to isolate feedback stability
+    for (int i = 0; i < 8; ++i)
+        config.levels[i] = 0.0f;
+    config.positions[0] = 1.0f;
+    config.levels[0] = 1.0f;
+
+    FeedbackConfig fb;
+    fb.gains[0] = 1.0f; // Single tap at 100% feedback
+
+    warmupFb(engine, 44100, 20.0f, 1.0f, 0.0f, false,
+             config.positions, config.levels, fb);
+
+    // Feed continuous sine input for 2 seconds
+    const int totalSamples = static_cast<int>(sampleRate * 2.0);
+    float maxAmp = 0.0f;
+    int processed = 0;
+
+    while (processed < totalSamples)
+    {
+        int thisBlock = std::min(blockSize, totalSamples - processed);
+        juce::AudioBuffer<float> buf(2, thisBlock);
+        for (int i = 0; i < thisBlock; ++i)
+        {
+            float t = static_cast<float>(processed + i) / static_cast<float>(sampleRate);
+            float sample = std::sin(2.0f * 3.14159265f * 440.0f * t) * 0.5f;
+            buf.setSample(0, i, sample);
+            buf.setSample(1, i, sample);
+        }
+        engine.process(buf, 20.0f, 1.0f, 0.0f, false,
+                       config.positions, config.levels,
+                       fb.gains, fb.hpFreq, fb.lpFreq, fb.hpOn, fb.lpOn);
+
+        for (int i = 0; i < thisBlock; ++i)
+            maxAmp = std::max(maxAmp, std::abs(buf.getSample(0, i)));
+
+        processed += thisBlock;
+    }
+
+    INFO("maxAmp=" << maxAmp);
+    // With single tap feedback at 100%, the saturator bounds the delay line
+    // content so wet output should stay bounded (tanh clips to [-1,+1])
+    REQUIRE(maxAmp < 1.5f);
+}
+
+TEST_CASE("DelayEngine all feedback sources stay bounded", "[delayengine][feedback]")
+{
+    // With all 12 sources at max and all 8 taps active, the wet output
+    // (sum of 8 taps) can be large, but the delay line content stays bounded
+    // thanks to the saturator. Verify no unbounded growth.
+    DelayEngine engine;
+    const double sampleRate = 44100.0;
+    const int blockSize = 512;
+    engine.prepare(sampleRate, blockSize);
+
+    TapConfig config; // All 8 taps active at level 1.0
+
+    FeedbackConfig fb;
+    for (int i = 0; i < 12; ++i)
+        fb.gains[i] = 1.0f;
+
+    warmupFb(engine, 44100, 20.0f, 1.0f, 0.0f, false,
+             config.positions, config.levels, fb);
+
+    // Feed continuous sine input for 2 seconds
+    const int totalSamples = static_cast<int>(sampleRate * 2.0);
+    float maxAmp = 0.0f;
+    int processed = 0;
+
+    while (processed < totalSamples)
+    {
+        int thisBlock = std::min(blockSize, totalSamples - processed);
+        juce::AudioBuffer<float> buf(2, thisBlock);
+        for (int i = 0; i < thisBlock; ++i)
+        {
+            float t = static_cast<float>(processed + i) / static_cast<float>(sampleRate);
+            float sample = std::sin(2.0f * 3.14159265f * 440.0f * t) * 0.5f;
+            buf.setSample(0, i, sample);
+            buf.setSample(1, i, sample);
+        }
+        engine.process(buf, 20.0f, 1.0f, 0.0f, false,
+                       config.positions, config.levels,
+                       fb.gains, fb.hpFreq, fb.lpFreq, fb.hpOn, fb.lpOn);
+
+        for (int i = 0; i < thisBlock; ++i)
+            maxAmp = std::max(maxAmp, std::abs(buf.getSample(0, i)));
+
+        processed += thisBlock;
+    }
+
+    INFO("maxAmp=" << maxAmp);
+    // With 8 taps summed, wet output can be up to ~8x the delay line content.
+    // The saturator keeps delay line content bounded, so wet output should
+    // not grow unbounded. Allow generous headroom for 8-tap sum.
+    REQUIRE(maxAmp < 10.0f);
+}
+
+TEST_CASE("DelayEngine feedback LP filter darkens repeats", "[delayengine][feedback]")
+{
+    DelayEngine engine;
+    const double sampleRate = 44100.0;
+    const int blockSize = 4096;
+    engine.prepare(sampleRate, blockSize);
+
+    TapConfig config;
+    for (int i = 0; i < 8; ++i)
+        config.levels[i] = 0.0f;
+    config.positions[0] = 1.0f;
+    config.levels[0] = 1.0f;
+
+    FeedbackConfig fb;
+    fb.gains[0] = 0.9f; // Strong but not max feedback
+    fb.lpFreq = 2000.0f;
+    fb.lpOn = true;
+
+    warmupFb(engine, 44100, 20.0f, 1.0f, 0.0f, false,
+             config.positions, config.levels, fb);
+
+    // Send broadband impulse and collect output
+    const int totalSamples = static_cast<int>(sampleRate * 2.0);
+    std::vector<float> output;
+    output.reserve(static_cast<size_t>(totalSamples));
+
+    {
+        juce::AudioBuffer<float> buf(2, blockSize);
+        buf.clear();
+        buf.setSample(0, 0, 1.0f);
+        buf.setSample(1, 0, 1.0f);
+        engine.process(buf, 20.0f, 1.0f, 0.0f, false,
+                       config.positions, config.levels,
+                       fb.gains, fb.hpFreq, fb.lpFreq, fb.hpOn, fb.lpOn);
+        for (int i = 0; i < blockSize; ++i)
+            output.push_back(buf.getSample(0, i));
+    }
+
+    int remaining = totalSamples - blockSize;
+    while (remaining > 0)
+    {
+        int thisBlock = std::min(blockSize, remaining);
+        juce::AudioBuffer<float> buf(2, thisBlock);
+        buf.clear();
+        engine.process(buf, 20.0f, 1.0f, 0.0f, false,
+                       config.positions, config.levels,
+                       fb.gains, fb.hpFreq, fb.lpFreq, fb.hpOn, fb.lpOn);
+        for (int i = 0; i < thisBlock; ++i)
+            output.push_back(buf.getSample(0, i));
+        remaining -= thisBlock;
+    }
+
+    // Measure HF energy of early vs late repeats
+    // Tap delay: 20ms = 882 samples. Each repeat adds another 882 samples.
+    // Early repeat: around sample 882 (first echo)
+    // Late repeat: around sample 8820 (10th echo)
+    // Measure energy above 4kHz using simple difference approximation
+
+    auto measureHFEnergy = [&](size_t startSample, size_t windowSize) -> float {
+        float energy = 0.0f;
+        for (size_t i = startSample + 1; i < startSample + windowSize && i < output.size(); ++i)
+        {
+            // High-frequency proxy: energy of sample-to-sample differences
+            float diff = output[i] - output[i - 1];
+            energy += diff * diff;
+        }
+        return energy;
+    };
+
+    float earlyHF = measureHFEnergy(800, 200);   // Around first repeat
+    float lateHF = measureHFEnergy(8000, 200);    // Around 10th repeat
+
+    INFO("earlyHF=" << earlyHF << " lateHF=" << lateHF);
+    // Later repeats should have less HF content due to LP filter
+    // Only check if there's actually signal in the early repeat
+    if (earlyHF > 1e-8f)
+        REQUIRE(lateHF < earlyHF);
 }

@@ -315,6 +315,148 @@ TEST_CASE("Sweeping base delay produces no clicks at buffer size 64", "[processo
     REQUIRE(clickCount == 0);
 }
 
+// ============================================================
+// Phase 3: Feedback parameter tests
+// ============================================================
+
+TEST_CASE("All Phase 3 feedback parameters exist", "[parameters][feedback]") {
+    ZeitraumProcessor proc;
+
+    // 8 individual tap feedback gains
+    for (int i = 1; i <= 8; ++i)
+        REQUIRE(proc.apvts.getParameter("FB_TAP" + juce::String(i)) != nullptr);
+
+    // 4 preset mix feedback gains
+    REQUIRE(proc.apvts.getParameter("FB_ODD") != nullptr);
+    REQUIRE(proc.apvts.getParameter("FB_EVEN") != nullptr);
+    REQUIRE(proc.apvts.getParameter("FB_RISING") != nullptr);
+    REQUIRE(proc.apvts.getParameter("FB_FALLING") != nullptr);
+
+    // Filter parameters
+    REQUIRE(proc.apvts.getParameter("FB_HP_FREQ") != nullptr);
+    REQUIRE(proc.apvts.getParameter("FB_LP_FREQ") != nullptr);
+    REQUIRE(proc.apvts.getParameter("FB_HP_ON") != nullptr);
+    REQUIRE(proc.apvts.getParameter("FB_LP_ON") != nullptr);
+}
+
+TEST_CASE("Feedback parameter defaults are correct", "[parameters][feedback]") {
+    ZeitraumProcessor proc;
+
+    auto load = [&](const juce::String& id) {
+        return proc.apvts.getRawParameterValue(id)->load();
+    };
+
+    // All gains default to 0%
+    for (int i = 1; i <= 8; ++i)
+        REQUIRE_THAT(load("FB_TAP" + juce::String(i)),
+                     Catch::Matchers::WithinAbs(0.0, 0.5));
+
+    REQUIRE_THAT(load("FB_ODD"), Catch::Matchers::WithinAbs(0.0, 0.5));
+    REQUIRE_THAT(load("FB_EVEN"), Catch::Matchers::WithinAbs(0.0, 0.5));
+    REQUIRE_THAT(load("FB_RISING"), Catch::Matchers::WithinAbs(0.0, 0.5));
+    REQUIRE_THAT(load("FB_FALLING"), Catch::Matchers::WithinAbs(0.0, 0.5));
+
+    // Filter defaults
+    REQUIRE_THAT(load("FB_HP_FREQ"), Catch::Matchers::WithinAbs(20.0, 0.5));
+    REQUIRE_THAT(load("FB_LP_FREQ"), Catch::Matchers::WithinAbs(20000.0, 1.0));
+
+    // Filters bypassed by default
+    REQUIRE(load("FB_HP_ON") < 0.5f);
+    REQUIRE(load("FB_LP_ON") < 0.5f);
+}
+
+TEST_CASE("State round-trip preserves feedback parameters", "[state][feedback]") {
+    juce::MemoryBlock savedState;
+    {
+        ZeitraumProcessor proc;
+
+        // Set non-default feedback values
+        if (auto* param = proc.apvts.getParameter("FB_TAP1"))
+            param->setValueNotifyingHost(param->convertTo0to1(75.0f));
+        if (auto* param = proc.apvts.getParameter("FB_ODD"))
+            param->setValueNotifyingHost(param->convertTo0to1(50.0f));
+        if (auto* param = proc.apvts.getParameter("FB_HP_FREQ"))
+            param->setValueNotifyingHost(param->convertTo0to1(200.0f));
+        if (auto* param = proc.apvts.getParameter("FB_LP_FREQ"))
+            param->setValueNotifyingHost(param->convertTo0to1(5000.0f));
+        if (auto* param = proc.apvts.getParameter("FB_HP_ON"))
+            param->setValueNotifyingHost(1.0f);
+
+        proc.getStateInformation(savedState);
+    }
+
+    REQUIRE(savedState.getSize() > 0);
+
+    ZeitraumProcessor proc2;
+    proc2.setStateInformation(savedState.getData(),
+                               static_cast<int>(savedState.getSize()));
+
+    auto load = [&](const juce::String& id) {
+        return proc2.apvts.getRawParameterValue(id)->load();
+    };
+
+    REQUIRE_THAT(load("FB_TAP1"), Catch::Matchers::WithinAbs(75.0, 2.0));
+    REQUIRE_THAT(load("FB_ODD"), Catch::Matchers::WithinAbs(50.0, 2.0));
+    REQUIRE_THAT(load("FB_HP_FREQ"), Catch::Matchers::WithinAbs(200.0, 10.0));
+    REQUIRE_THAT(load("FB_LP_FREQ"), Catch::Matchers::WithinAbs(5000.0, 100.0));
+    REQUIRE(load("FB_HP_ON") > 0.5f);
+}
+
+TEST_CASE("Phase 2 state loads with feedback defaults", "[state][feedback]") {
+    // Save state from a processor, then manually create a Phase 2 state
+    // by saving with version 1 and no feedback params
+    juce::MemoryBlock savedState;
+    {
+        ZeitraumProcessor proc;
+        // Set a known non-default value for a Phase 2 param
+        if (auto* param = proc.apvts.getParameter("BASE_DELAY"))
+            param->setValueNotifyingHost(param->convertTo0to1(120.0f));
+        proc.getStateInformation(savedState);
+    }
+
+    // Modify the XML to remove feedback params and set version to 1
+    // (simulating a Phase 2 state)
+    std::unique_ptr<juce::XmlElement> xml(
+        juce::AudioProcessor::getXmlFromBinary(savedState.getData(),
+                                                static_cast<int>(savedState.getSize())));
+    REQUIRE(xml != nullptr);
+    xml->setAttribute("pluginVersion", 1);
+
+    // Remove all FB_ parameters from the XML
+    for (auto* child = xml->getFirstChildElement(); child != nullptr;)
+    {
+        auto* next = child->getNextElement();
+        auto id = child->getStringAttribute("id");
+        if (id.startsWith("FB_"))
+            xml->removeChildElement(child, true);
+        child = next;
+    }
+
+    // Re-serialize
+    juce::MemoryBlock phase2State;
+    juce::AudioProcessor::copyXmlToBinary(*xml, phase2State);
+
+    // Load into new processor
+    ZeitraumProcessor proc2;
+    proc2.setStateInformation(phase2State.getData(),
+                               static_cast<int>(phase2State.getSize()));
+
+    auto load = [&](const juce::String& id) {
+        return proc2.apvts.getRawParameterValue(id)->load();
+    };
+
+    // Phase 2 param should be preserved
+    REQUIRE_THAT(load("BASE_DELAY"), Catch::Matchers::WithinAbs(120.0, 1.0));
+
+    // Feedback params should be at defaults
+    REQUIRE_THAT(load("FB_TAP1"), Catch::Matchers::WithinAbs(0.0, 0.5));
+    REQUIRE_THAT(load("FB_ODD"), Catch::Matchers::WithinAbs(0.0, 0.5));
+    REQUIRE_THAT(load("FB_HP_FREQ"), Catch::Matchers::WithinAbs(20.0, 0.5));
+    REQUIRE_THAT(load("FB_LP_FREQ"), Catch::Matchers::WithinAbs(20000.0, 1.0));
+    REQUIRE(load("FB_HP_ON") < 0.5f);
+    REQUIRE(load("FB_LP_ON") < 0.5f);
+}
+
 TEST_CASE("Stereo channels both produce output", "[processor][dsp]") {
     ZeitraumProcessor proc;
     proc.prepareToPlay(44100.0, 512);
