@@ -457,6 +457,118 @@ TEST_CASE("Phase 2 state loads with feedback defaults", "[state][feedback]") {
     REQUIRE(load("FB_LP_ON") < 0.5f);
 }
 
+// ============================================================
+// Phase 3: Output mix preset tests
+// ============================================================
+
+TEST_CASE("OUTPUT_MIX parameter exists", "[parameters][output-mix]") {
+    ZeitraumProcessor proc;
+
+    auto* param = proc.apvts.getParameter("OUTPUT_MIX");
+    REQUIRE(param != nullptr);
+
+    // Should be a choice parameter with 5 options
+    auto* choice = dynamic_cast<juce::AudioParameterChoice*>(param);
+    REQUIRE(choice != nullptr);
+    REQUIRE(choice->choices.size() == 5);
+    REQUIRE(choice->choices[0] == "Manual");
+    REQUIRE(choice->choices[1] == "Odd");
+    REQUIRE(choice->choices[2] == "Even");
+    REQUIRE(choice->choices[3] == "Rising");
+    REQUIRE(choice->choices[4] == "Falling");
+}
+
+TEST_CASE("Output mix Odd preset sets correct tap levels", "[processor][output-mix]") {
+    ZeitraumProcessor proc;
+    proc.prepareToPlay(44100.0, 512);
+
+    // Set OUTPUT_MIX to Odd (index 1)
+    if (auto* param = proc.apvts.getParameter("OUTPUT_MIX"))
+        param->setValueNotifyingHost(param->convertTo0to1(1.0f));
+
+    juce::AudioBuffer<float> buffer(2, 512);
+    buffer.clear();
+    juce::MidiBuffer midi;
+    proc.processBlock(buffer, midi);
+
+    auto load = [&](const juce::String& id) {
+        return proc.apvts.getRawParameterValue(id)->load();
+    };
+
+    // Odd taps (1,3,5,7) should be 1.0, even taps (2,4,6,8) should be 0.0
+    REQUIRE_THAT(load("TAP1_LEVEL"), Catch::Matchers::WithinAbs(1.0, 0.01));
+    REQUIRE_THAT(load("TAP2_LEVEL"), Catch::Matchers::WithinAbs(0.0, 0.01));
+    REQUIRE_THAT(load("TAP3_LEVEL"), Catch::Matchers::WithinAbs(1.0, 0.01));
+    REQUIRE_THAT(load("TAP4_LEVEL"), Catch::Matchers::WithinAbs(0.0, 0.01));
+    REQUIRE_THAT(load("TAP5_LEVEL"), Catch::Matchers::WithinAbs(1.0, 0.01));
+    REQUIRE_THAT(load("TAP6_LEVEL"), Catch::Matchers::WithinAbs(0.0, 0.01));
+    REQUIRE_THAT(load("TAP7_LEVEL"), Catch::Matchers::WithinAbs(1.0, 0.01));
+    REQUIRE_THAT(load("TAP8_LEVEL"), Catch::Matchers::WithinAbs(0.0, 0.01));
+
+    // OUTPUT_MIX should reset back to Manual (0)
+    REQUIRE_THAT(load("OUTPUT_MIX"), Catch::Matchers::WithinAbs(0.0, 0.01));
+}
+
+TEST_CASE("Output mix Rising preset sets linear ramp", "[processor][output-mix]") {
+    ZeitraumProcessor proc;
+    proc.prepareToPlay(44100.0, 512);
+
+    // Set OUTPUT_MIX to Rising (index 3)
+    if (auto* param = proc.apvts.getParameter("OUTPUT_MIX"))
+        param->setValueNotifyingHost(param->convertTo0to1(3.0f));
+
+    juce::AudioBuffer<float> buffer(2, 512);
+    buffer.clear();
+    juce::MidiBuffer midi;
+    proc.processBlock(buffer, midi);
+
+    auto load = [&](const juce::String& id) {
+        return proc.apvts.getRawParameterValue(id)->load();
+    };
+
+    // Rising: 1/8, 2/8, 3/8, 4/8, 5/8, 6/8, 7/8, 1.0
+    REQUIRE_THAT(load("TAP1_LEVEL"), Catch::Matchers::WithinAbs(1.0 / 8.0, 0.02));
+    REQUIRE_THAT(load("TAP2_LEVEL"), Catch::Matchers::WithinAbs(2.0 / 8.0, 0.02));
+    REQUIRE_THAT(load("TAP3_LEVEL"), Catch::Matchers::WithinAbs(3.0 / 8.0, 0.02));
+    REQUIRE_THAT(load("TAP4_LEVEL"), Catch::Matchers::WithinAbs(4.0 / 8.0, 0.02));
+    REQUIRE_THAT(load("TAP5_LEVEL"), Catch::Matchers::WithinAbs(5.0 / 8.0, 0.02));
+    REQUIRE_THAT(load("TAP6_LEVEL"), Catch::Matchers::WithinAbs(6.0 / 8.0, 0.02));
+    REQUIRE_THAT(load("TAP7_LEVEL"), Catch::Matchers::WithinAbs(7.0 / 8.0, 0.02));
+    REQUIRE_THAT(load("TAP8_LEVEL"), Catch::Matchers::WithinAbs(1.0, 0.02));
+
+    // TAP1 < TAP8
+    REQUIRE(load("TAP1_LEVEL") < load("TAP8_LEVEL"));
+
+    // OUTPUT_MIX should reset back to Manual (0)
+    REQUIRE_THAT(load("OUTPUT_MIX"), Catch::Matchers::WithinAbs(0.0, 0.01));
+}
+
+TEST_CASE("Output mix Manual does not modify tap levels", "[processor][output-mix]") {
+    ZeitraumProcessor proc;
+    proc.prepareToPlay(44100.0, 512);
+
+    // Set custom tap levels
+    if (auto* param = proc.apvts.getParameter("TAP1_LEVEL"))
+        param->setValueNotifyingHost(param->convertTo0to1(0.42f));
+    if (auto* param = proc.apvts.getParameter("TAP5_LEVEL"))
+        param->setValueNotifyingHost(param->convertTo0to1(0.77f));
+
+    // Ensure OUTPUT_MIX is Manual (0) -- should be default
+    auto load = [&](const juce::String& id) {
+        return proc.apvts.getRawParameterValue(id)->load();
+    };
+    REQUIRE_THAT(load("OUTPUT_MIX"), Catch::Matchers::WithinAbs(0.0, 0.01));
+
+    juce::AudioBuffer<float> buffer(2, 512);
+    buffer.clear();
+    juce::MidiBuffer midi;
+    proc.processBlock(buffer, midi);
+
+    // Tap levels should be unchanged
+    REQUIRE_THAT(load("TAP1_LEVEL"), Catch::Matchers::WithinAbs(0.42, 0.02));
+    REQUIRE_THAT(load("TAP5_LEVEL"), Catch::Matchers::WithinAbs(0.77, 0.02));
+}
+
 TEST_CASE("Stereo channels both produce output", "[processor][dsp]") {
     ZeitraumProcessor proc;
     proc.prepareToPlay(44100.0, 512);

@@ -31,6 +31,8 @@ ZeitraumProcessor::ZeitraumProcessor()
     fbLPFreqParam = apvts.getRawParameterValue("FB_LP_FREQ");
     fbHPOnParam = apvts.getRawParameterValue("FB_HP_ON");
     fbLPOnParam = apvts.getRawParameterValue("FB_LP_ON");
+
+    outputMixParam = apvts.getRawParameterValue("OUTPUT_MIX");
 }
 
 ZeitraumProcessor::~ZeitraumProcessor() {}
@@ -136,6 +138,11 @@ ZeitraumProcessor::createParameterLayout()
     layout.add(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"FB_LP_ON", 1}, "FB LP On", false));
 
+    // Output mix preset selector (apply-and-reset trigger)
+    layout.add(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"OUTPUT_MIX", 1}, "Output Mix",
+        juce::StringArray{"Manual", "Odd", "Even", "Rising", "Falling"}, 0));
+
     return layout;
 }
 
@@ -193,6 +200,35 @@ void ZeitraumProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     // Push dry samples into DryWetMixer before processing
     juce::dsp::AudioBlock<float> block(buffer);
     dryWetMixer.pushDrySamples(block);
+
+    // Apply output mix preset if selector is not Manual
+    int outputMix = static_cast<int>(outputMixParam->load());
+    if (outputMix > 0)
+    {
+        static constexpr float oddLevels[8]     = {1.f, 0.f, 1.f, 0.f, 1.f, 0.f, 1.f, 0.f};
+        static constexpr float evenLevels[8]    = {0.f, 1.f, 0.f, 1.f, 0.f, 1.f, 0.f, 1.f};
+        static constexpr float risingLevels[8]  = {1/8.f, 2/8.f, 3/8.f, 4/8.f, 5/8.f, 6/8.f, 7/8.f, 1.f};
+        static constexpr float fallingLevels[8] = {1.f, 7/8.f, 6/8.f, 5/8.f, 4/8.f, 3/8.f, 2/8.f, 1/8.f};
+
+        const float* pattern = nullptr;
+        switch (outputMix) {
+            case 1: pattern = oddLevels; break;
+            case 2: pattern = evenLevels; break;
+            case 3: pattern = risingLevels; break;
+            case 4: pattern = fallingLevels; break;
+        }
+
+        if (pattern) {
+            for (int i = 0; i < 8; ++i) {
+                if (auto* p = apvts.getParameter("TAP" + juce::String(i + 1) + "_LEVEL"))
+                    p->setValueNotifyingHost(p->convertTo0to1(pattern[i]));
+            }
+        }
+
+        // Reset selector back to Manual
+        if (auto* p = apvts.getParameter("OUTPUT_MIX"))
+            p->setValueNotifyingHost(0.0f);
+    }
 
     // Load parameter values atomically
     float baseDelay = baseDelayParam->load();
