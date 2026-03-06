@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-last_updated: "2026-03-06T16:04:22Z"
+last_updated: "2026-03-06T16:08:37Z"
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 8
+  completed_plans: 8
 ---
 
 # Project State
@@ -23,18 +23,18 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 ## Current Position
 
 Phase: 3 of 5 (Feedback Matrix) -- IN PROGRESS
-Plan: 2 of 4 in current phase
-Status: Completed 03-02 (FeedbackMatrix routing), next: 03-03
-Last activity: 2026-03-06 -- Completed 03-02-PLAN.md (FeedbackMatrix DSP class)
+Plan: 2 of 4 in current phase (03-01 and 03-02 complete)
+Status: Completed 03-01 (FeedbackFilter/Saturator) and 03-02 (FeedbackMatrix), next: 03-03
+Last activity: 2026-03-06 -- Completed 03-01-PLAN.md (FeedbackFilter and FeedbackSaturator)
 
-Progress: [███████░░░] 70%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: 8min
-- Total execution time: 1.38 hours
+- Total execution time: 1.50 hours
 
 **By Phase:**
 
@@ -42,10 +42,10 @@ Progress: [███████░░░] 70%
 |-------|-------|-------|----------|
 | 01-project-scaffolding | 2 | 8min | 4min |
 | 02-core-delay-engine | 4 | 72min | 18min |
-| 03-feedback-matrix | 1 | 3min | 3min |
+| 03-feedback-matrix | 2 | 10min | 5min |
 
 **Recent Trend:**
-- Last 5 plans: 16min, 3min, 45min, 3min
+- Last 5 plans: 3min, 45min, 3min, 7min
 - Trend: variable
 
 *Updated after each plan completion*
@@ -73,6 +73,8 @@ Recent decisions affecting current work:
 - Phase 2 complete: CORE-01 through CORE-09, MIX-01, INTG-04, GUI-04, INFR-04 all addressed
 - 7ms smoothing time for feedback gains (fast response, no zipper noise)
 - std::vector scratch buffers sized in prepare() for smoothed gain pre-computation
+- Plain tanh(input) for soft clip instead of tanh(input*1.5)/tanh(1.5) -- drive formula breaks small-signal unity gain
+- HP filter uses subtraction method (input minus lowpass) to avoid DC drift
 
 ### Pending Todos
 
@@ -87,5 +89,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 03-02-PLAN.md (FeedbackMatrix DSP class)
+Stopped at: Completed 03-01-PLAN.md (FeedbackFilter and FeedbackSaturator)
 Resume file: None
