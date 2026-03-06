@@ -22,7 +22,7 @@
 - [x] **FDBK-01**: Plugin provides a feedback routing matrix where any tap or preset mix can be routed back to the delay input with independent gain
 - [x] **FDBK-02**: Feedback matrix includes saturation/limiting to prevent runaway oscillation
 - [x] **FDBK-03**: Feedback path includes highpass and lowpass filters for tonal shaping
-- [ ] **FDBK-04**: Plugin provides an interactive visual display of the feedback routing matrix
+- [x] **FDBK-04**: Plugin provides an interactive visual display of the feedback routing matrix
 
 ### Mixing & Output
 
@@ -98,7 +98,7 @@
 | FDBK-01 | Phase 3 | Complete |
 | FDBK-02 | Phase 3 | Complete |
 | FDBK-03 | Phase 3 | Complete |
-| FDBK-04 | Phase 3 | Pending |
+| FDBK-04 | Phase 3 | Complete |
 | MIX-01 | Phase 2 | Complete |
 | MIX-02 | Phase 3 | Pending |
 | MIX-03 | Phase 3 | Complete |
