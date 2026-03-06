@@ -61,11 +61,13 @@ Plans:
   2. Cranking feedback gains to maximum produces saturation and sustain but never runaway oscillation or digital blowup
   3. Feedback path filtering (highpass/lowpass) audibly shapes the tone of repeated echoes
   4. Feedback routing state is visible in an interactive matrix display
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [ ] 03-01-PLAN.md -- FeedbackFilter and FeedbackSaturator DSP classes with unit tests
+- [ ] 03-02-PLAN.md -- FeedbackMatrix DSP class with unit tests
+- [ ] 03-03-PLAN.md -- DelayEngine feedback integration and parameter wiring
+- [ ] 03-04-PLAN.md -- Output mix presets, AU validation, and DAW listening checkpoint
 
 ### Phase 4: DAW Integration
 **Goal**: Plugin behaves as a first-class DAW citizen with full automation, tempo sync, and reliable session recall
@@ -102,6 +104,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 |-------|----------------|--------|-----------|
 | 1. Project Scaffolding | 2/2 | Complete | 2026-03-05 |
 | 2. Core Delay Engine | 0/4 | Not started | - |
-| 3. Feedback Matrix | 0/2 | Not started | - |
+| 3. Feedback Matrix | 0/4 | Not started | - |
 | 4. DAW Integration | 0/1 | Not started | - |
 | 5. GUI | 0/1 | Not started | - |
