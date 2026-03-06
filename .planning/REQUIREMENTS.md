@@ -19,7 +19,7 @@
 
 ### Feedback & Routing
 
-- [ ] **FDBK-01**: Plugin provides a feedback routing matrix where any tap or preset mix can be routed back to the delay input with independent gain
+- [x] **FDBK-01**: Plugin provides a feedback routing matrix where any tap or preset mix can be routed back to the delay input with independent gain
 - [ ] **FDBK-02**: Feedback matrix includes saturation/limiting to prevent runaway oscillation
 - [ ] **FDBK-03**: Feedback path includes highpass and lowpass filters for tonal shaping
 - [ ] **FDBK-04**: Plugin provides an interactive visual display of the feedback routing matrix
@@ -28,7 +28,7 @@
 
 - [x] **MIX-01**: Plugin operates in stereo (stereo input, stereo output)
 - [ ] **MIX-02**: Plugin provides preset mixes: odd taps, even taps, rising-level, falling-level
-- [ ] **MIX-03**: Preset mixes are available as feedback sources in the routing matrix
+- [x] **MIX-03**: Preset mixes are available as feedback sources in the routing matrix
 
 ### Integration
 
@@ -95,13 +95,13 @@
 | CORE-07 | Phase 2 | Complete |
 | CORE-08 | Phase 2 | Complete |
 | CORE-09 | Phase 2 | Complete |
-| FDBK-01 | Phase 3 | Pending |
+| FDBK-01 | Phase 3 | Complete |
 | FDBK-02 | Phase 3 | Pending |
 | FDBK-03 | Phase 3 | Pending |
 | FDBK-04 | Phase 3 | Pending |
 | MIX-01 | Phase 2 | Complete |
 | MIX-02 | Phase 3 | Pending |
-| MIX-03 | Phase 3 | Pending |
+| MIX-03 | Phase 3 | Complete |
 | INTG-01 | Phase 4 | Pending |
 | INTG-02 | Phase 4 | Pending |
 | INTG-03 | Phase 4 | Pending |

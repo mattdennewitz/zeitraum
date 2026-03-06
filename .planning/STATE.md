@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-06T14:29:42.998Z"
+status: in-progress
+last_updated: "2026-03-06T16:04:22Z"
 progress:
-  total_phases: 2
+  total_phases: 3
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 7
+  completed_plans: 7
 ---
 
 # Project State
@@ -18,23 +18,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** The feedback routing matrix and per-tap control over a shared serial delay line -- creating complex, evolving delay textures
-**Current focus:** Phase 2 complete. Next: Phase 3 (Feedback Matrix)
+**Current focus:** Phase 3 in progress -- Feedback Matrix DSP classes
 
 ## Current Position
 
-Phase: 2 of 5 (Core Delay Engine) -- COMPLETE
-Plan: 4 of 4 in current phase (all done)
-Status: Phase 2 complete, ready for Phase 3
-Last activity: 2026-03-05 -- Completed 02-04-PLAN.md (Tap Presets & Phase Gate)
+Phase: 3 of 5 (Feedback Matrix) -- IN PROGRESS
+Plan: 2 of 4 in current phase
+Status: Completed 03-02 (FeedbackMatrix routing), next: 03-03
+Last activity: 2026-03-06 -- Completed 03-02-PLAN.md (FeedbackMatrix DSP class)
 
-Progress: [██████░░░░] 60%
+Progress: [███████░░░] 70%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 9min
-- Total execution time: 1.33 hours
+- Total plans completed: 7
+- Average duration: 8min
+- Total execution time: 1.38 hours
 
 **By Phase:**
 
@@ -42,10 +42,11 @@ Progress: [██████░░░░] 60%
 |-------|-------|-------|----------|
 | 01-project-scaffolding | 2 | 8min | 4min |
 | 02-core-delay-engine | 4 | 72min | 18min |
+| 03-feedback-matrix | 1 | 3min | 3min |
 
 **Recent Trend:**
-- Last 5 plans: 8min, 16min, 3min, 45min
-- Trend: variable (glitch debugging added time to phase gate plan)
+- Last 5 plans: 16min, 3min, 45min, 3min
+- Trend: variable
 
 *Updated after each plan completion*
 
@@ -70,6 +71,8 @@ Recent decisions affecting current work:
 - Tap presets stored as ValueTree children -- auto-persist via existing XML state mechanism
 - 50ms smoothing for delay-time params prevents sweep glitches; pre-compute into scratch buffers before channel loop to avoid multi-channel double-advance
 - Phase 2 complete: CORE-01 through CORE-09, MIX-01, INTG-04, GUI-04, INFR-04 all addressed
+- 7ms smoothing time for feedback gains (fast response, no zipper noise)
+- std::vector scratch buffers sized in prepare() for smoothed gain pre-computation
 
 ### Pending Todos
 
@@ -83,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-05
-Stopped at: Completed 02-04-PLAN.md (Tap Presets & Phase Gate) -- Phase 2 complete
+Last session: 2026-03-06
+Stopped at: Completed 03-02-PLAN.md (FeedbackMatrix DSP class)
 Resume file: None
