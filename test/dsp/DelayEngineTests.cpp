@@ -218,6 +218,129 @@ TEST_CASE("DelayEngine stereo independence", "[delayengine]")
     REQUIRE(rightMax < 1e-5f);
 }
 
+TEST_CASE("DelayEngine sweep produces no clicks", "[delayengine][glitch]")
+{
+    // Feed continuous sine wave, sweep base delay, check for sample-to-sample
+    // discontinuities that would indicate clicks/glitches
+    DelayEngine engine;
+    const double sampleRate = 44100.0;
+    const int blockSize = 64; // Small buffer size as reported problematic
+    engine.prepare(sampleRate, blockSize);
+
+    TapConfig config;
+    // Use single tap to simplify analysis
+    for (int i = 0; i < 8; ++i)
+        config.levels[i] = 0.0f;
+    config.positions[0] = 1.0f;
+    config.levels[0] = 1.0f;
+
+    // Warmup at initial delay
+    warmup(engine, 44100, 80.0f, 1.0f, 0.0f, false, config.positions, config.levels);
+
+    // Generate sine input and collect output while sweeping delay
+    const int totalBlocks = 200;  // ~290ms of audio
+    std::vector<float> output;
+    output.reserve(totalBlocks * blockSize);
+
+    float baseDelay = 80.0f;
+    for (int b = 0; b < totalBlocks; ++b)
+    {
+        // Sweep base delay from 80ms down to 30ms
+        baseDelay = 80.0f - (50.0f * static_cast<float>(b) / static_cast<float>(totalBlocks));
+
+        juce::AudioBuffer<float> buffer(2, blockSize);
+        for (int i = 0; i < blockSize; ++i)
+        {
+            float t = static_cast<float>(b * blockSize + i) / static_cast<float>(sampleRate);
+            float sample = std::sin(2.0f * 3.14159265f * 440.0f * t) * 0.5f;
+            buffer.setSample(0, i, sample);
+            buffer.setSample(1, i, sample);
+        }
+
+        engine.process(buffer, baseDelay, 1.0f, 0.0f, false,
+                       config.positions, config.levels);
+
+        for (int i = 0; i < blockSize; ++i)
+            output.push_back(buffer.getSample(0, i));
+    }
+
+    // Detect clicks: look for sample-to-sample jumps that exceed a threshold.
+    // A 440Hz sine at 0.5 amplitude has max sample-to-sample delta of about
+    // 0.5 * 2*pi*440/44100 ≈ 0.031 per sample. Allow generous headroom for
+    // pitch-shifted content during sweep (up to 4x), but flag anything >0.5
+    // as a discontinuity (click).
+    const float clickThreshold = 0.5f;
+    int clickCount = 0;
+    float maxDelta = 0.0f;
+
+    // Skip first 1000 samples for smoother settling
+    for (size_t i = 1001; i < output.size(); ++i)
+    {
+        float delta = std::abs(output[i] - output[i - 1]);
+        if (delta > maxDelta) maxDelta = delta;
+        if (delta > clickThreshold) clickCount++;
+    }
+
+    INFO("maxDelta=" << maxDelta << " clickCount=" << clickCount);
+    REQUIRE(clickCount == 0);
+}
+
+TEST_CASE("DelayEngine tap position sweep produces no clicks", "[delayengine][glitch]")
+{
+    // Feed continuous sine wave, sweep tap position, check for discontinuities
+    DelayEngine engine;
+    const double sampleRate = 44100.0;
+    const int blockSize = 64;
+    engine.prepare(sampleRate, blockSize);
+
+    TapConfig config;
+    for (int i = 0; i < 8; ++i)
+        config.levels[i] = 0.0f;
+    config.levels[0] = 1.0f;
+    config.positions[0] = 0.5f;
+
+    warmup(engine, 44100, 80.0f, 1.0f, 0.0f, false, config.positions, config.levels);
+
+    const int totalBlocks = 200;
+    std::vector<float> output;
+    output.reserve(totalBlocks * blockSize);
+
+    for (int b = 0; b < totalBlocks; ++b)
+    {
+        // Sweep tap position from 0.5 to 0.1
+        config.positions[0] = 0.5f - (0.4f * static_cast<float>(b) / static_cast<float>(totalBlocks));
+
+        juce::AudioBuffer<float> buffer(2, blockSize);
+        for (int i = 0; i < blockSize; ++i)
+        {
+            float t = static_cast<float>(b * blockSize + i) / static_cast<float>(sampleRate);
+            float sample = std::sin(2.0f * 3.14159265f * 440.0f * t) * 0.5f;
+            buffer.setSample(0, i, sample);
+            buffer.setSample(1, i, sample);
+        }
+
+        engine.process(buffer, 80.0f, 1.0f, 0.0f, false,
+                       config.positions, config.levels);
+
+        for (int i = 0; i < blockSize; ++i)
+            output.push_back(buffer.getSample(0, i));
+    }
+
+    const float clickThreshold = 0.5f;
+    int clickCount = 0;
+    float maxDelta = 0.0f;
+
+    for (size_t i = 1001; i < output.size(); ++i)
+    {
+        float delta = std::abs(output[i] - output[i - 1]);
+        if (delta > maxDelta) maxDelta = delta;
+        if (delta > clickThreshold) clickCount++;
+    }
+
+    INFO("maxDelta=" << maxDelta << " clickCount=" << clickCount);
+    REQUIRE(clickCount == 0);
+}
+
 TEST_CASE("DelayEngine clean delay with characterAmount 0", "[delayengine]")
 {
     DelayEngine engine;

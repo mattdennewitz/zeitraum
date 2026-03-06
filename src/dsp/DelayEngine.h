@@ -75,6 +75,20 @@ public:
         const int numSamples = buffer.getNumSamples();
         const int numChannels = std::min(buffer.getNumChannels(), 2);
 
+        // Ensure scratch buffers are large enough (handles host block size changes)
+        if (static_cast<size_t>(numSamples) > smoothedBaseDelay.size())
+        {
+            auto sz = static_cast<size_t>(numSamples);
+            smoothedBaseDelay.resize(sz);
+            smoothedMultiplier.resize(sz);
+            smoothedCharacter.resize(sz);
+            for (int t = 0; t < numTaps; ++t)
+            {
+                smoothedTapDelay[t].resize(sz);
+                smoothedTapLevel[t].resize(sz);
+            }
+        }
+
         // Update smoother targets
         baseDelaySmoother.setTargetValue(baseDelayMs);
         multiplierSmoother.setTargetValue(multiplier);

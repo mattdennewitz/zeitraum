@@ -249,6 +249,72 @@ TEST_CASE("Recall nonexistent preset does nothing", "[preset]") {
                  Catch::Matchers::WithinAbs(static_cast<double>(originalPos), 0.001));
 }
 
+TEST_CASE("Sweeping base delay produces no clicks at buffer size 64", "[processor][glitch]") {
+    ZeitraumProcessor proc;
+    proc.prepareToPlay(44100.0, 64);
+
+    // Set MIX to 100% (wet only) and CHARACTER to 0% for clean signal
+    if (auto* param = proc.apvts.getParameter("MIX"))
+        param->setValueNotifyingHost(param->convertTo0to1(100.0f));
+    if (auto* param = proc.apvts.getParameter("CHARACTER"))
+        param->setValueNotifyingHost(param->convertTo0to1(0.0f));
+
+    // Use only tap 1 for cleaner analysis
+    for (int i = 2; i <= 8; ++i)
+        if (auto* param = proc.apvts.getParameter("TAP" + juce::String(i) + "_LEVEL"))
+            param->setValueNotifyingHost(0.0f);
+
+    juce::MidiBuffer midi;
+
+    // Warmup for 1 second
+    for (int b = 0; b < 690; ++b) {
+        juce::AudioBuffer<float> buf(2, 64);
+        for (int i = 0; i < 64; ++i) {
+            float t = static_cast<float>(b * 64 + i) / 44100.0f;
+            float sample = std::sin(2.0f * 3.14159265f * 440.0f * t) * 0.5f;
+            buf.setSample(0, i, sample);
+            buf.setSample(1, i, sample);
+        }
+        proc.processBlock(buf, midi);
+    }
+
+    // Sweep base delay from 80ms to 30ms over ~300ms (200 blocks of 64)
+    std::vector<float> output;
+    output.reserve(200 * 64);
+
+    for (int b = 0; b < 200; ++b) {
+        float baseDelay = 80.0f - (50.0f * static_cast<float>(b) / 200.0f);
+        if (auto* param = proc.apvts.getParameter("BASE_DELAY"))
+            param->setValueNotifyingHost(param->convertTo0to1(baseDelay));
+
+        juce::AudioBuffer<float> buf(2, 64);
+        for (int i = 0; i < 64; ++i) {
+            float t = static_cast<float>((690 + b) * 64 + i) / 44100.0f;
+            float sample = std::sin(2.0f * 3.14159265f * 440.0f * t) * 0.5f;
+            buf.setSample(0, i, sample);
+            buf.setSample(1, i, sample);
+        }
+        proc.processBlock(buf, midi);
+
+        for (int i = 0; i < 64; ++i)
+            output.push_back(buf.getSample(0, i));
+    }
+
+    // Check for discontinuities
+    const float clickThreshold = 0.5f;
+    int clickCount = 0;
+    float maxDelta = 0.0f;
+
+    for (size_t i = 1; i < output.size(); ++i) {
+        float delta = std::abs(output[i] - output[i - 1]);
+        if (delta > maxDelta) maxDelta = delta;
+        if (delta > clickThreshold) clickCount++;
+    }
+
+    INFO("maxDelta=" << maxDelta << " clickCount=" << clickCount);
+    REQUIRE(clickCount == 0);
+}
+
 TEST_CASE("Stereo channels both produce output", "[processor][dsp]") {
     ZeitraumProcessor proc;
     proc.prepareToPlay(44100.0, 512);
