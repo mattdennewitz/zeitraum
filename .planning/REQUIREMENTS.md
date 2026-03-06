@@ -14,7 +14,7 @@
 - [x] **CORE-05**: User can position each tap freely along the delay line (not fixed equal spacing)
 - [x] **CORE-06**: Equal spacing is provided as the default tap preset
 - [x] **CORE-07**: Tap times can be quantized to 10ms increments
-- [ ] **CORE-08**: Tap time presets can be saved and recalled
+- [x] **CORE-08**: Tap time presets can be saved and recalled
 - [x] **CORE-09**: User can control wet/dry mix globally
 
 ### Feedback & Routing
@@ -93,7 +93,7 @@
 | CORE-05 | Phase 2 | Complete |
 | CORE-06 | Phase 2 | Complete |
 | CORE-07 | Phase 2 | Complete |
-| CORE-08 | Phase 2 | Pending |
+| CORE-08 | Phase 2 | Complete |
 | CORE-09 | Phase 2 | Complete |
 | FDBK-01 | Phase 3 | Pending |
 | FDBK-02 | Phase 3 | Pending |

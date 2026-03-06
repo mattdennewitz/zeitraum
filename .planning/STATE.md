@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-last_updated: "2026-03-05T18:29:00Z"
+last_updated: "2026-03-05T19:51:59Z"
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -18,34 +18,34 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** The feedback routing matrix and per-tap control over a shared serial delay line -- creating complex, evolving delay textures
-**Current focus:** Phase 2: Core Delay Engine
+**Current focus:** Phase 2 complete. Next: Phase 3 (Feedback Matrix)
 
 ## Current Position
 
-Phase: 2 of 5 (Core Delay Engine)
-Plan: 3 of 4 in current phase
-Status: In progress
-Last activity: 2026-03-05 -- Completed 02-03-PLAN.md (Processor Integration)
+Phase: 2 of 5 (Core Delay Engine) -- COMPLETE
+Plan: 4 of 4 in current phase (all done)
+Status: Phase 2 complete, ready for Phase 3
+Last activity: 2026-03-05 -- Completed 02-04-PLAN.md (Tap Presets & Phase Gate)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: 6min
-- Total execution time: 0.58 hours
+- Total plans completed: 6
+- Average duration: 9min
+- Total execution time: 1.33 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-project-scaffolding | 2 | 8min | 4min |
-| 02-core-delay-engine | 3 | 27min | 9min |
+| 02-core-delay-engine | 4 | 72min | 18min |
 
 **Recent Trend:**
-- Last 5 plans: 2min, 8min, 16min, 3min
-- Trend: variable (integration tasks faster than DSP implementation)
+- Last 5 plans: 8min, 16min, 3min, 45min
+- Trend: variable (glitch debugging added time to phase gate plan)
 
 *Updated after each plan completion*
 
@@ -67,6 +67,9 @@ Recent decisions affecting current work:
 - Quantization tests use non-edge-case float values to avoid std::round precision issues
 - DelayEngine handles all per-sample smoothing internally -- no duplicate smoothers in processor
 - DryWetMixer manages mix smoothing internally via setWetMixProportion per block
+- Tap presets stored as ValueTree children -- auto-persist via existing XML state mechanism
+- 50ms smoothing for delay-time params prevents sweep glitches; pre-compute into scratch buffers before channel loop to avoid multi-channel double-advance
+- Phase 2 complete: CORE-01 through CORE-09, MIX-01, INTG-04, GUI-04, INFR-04 all addressed
 
 ### Pending Todos
 
@@ -81,5 +84,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: Completed 02-03-PLAN.md (Processor Integration)
+Stopped at: Completed 02-04-PLAN.md (Tap Presets & Phase Gate) -- Phase 2 complete
 Resume file: None
