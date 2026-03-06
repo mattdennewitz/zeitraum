@@ -18,6 +18,19 @@ ZeitraumProcessor::ZeitraumProcessor()
         tapPosParams[i] = apvts.getRawParameterValue("TAP" + juce::String(i + 1) + "_POS");
         tapLevelParams[i] = apvts.getRawParameterValue("TAP" + juce::String(i + 1) + "_LEVEL");
     }
+
+    // Cache feedback parameter pointers
+    for (int i = 0; i < 8; ++i)
+        fbTapGainParams[i] = apvts.getRawParameterValue("FB_TAP" + juce::String(i + 1));
+
+    const juce::String mixNames[] = {"FB_ODD", "FB_EVEN", "FB_RISING", "FB_FALLING"};
+    for (int i = 0; i < 4; ++i)
+        fbMixGainParams[i] = apvts.getRawParameterValue(mixNames[i]);
+
+    fbHPFreqParam = apvts.getRawParameterValue("FB_HP_FREQ");
+    fbLPFreqParam = apvts.getRawParameterValue("FB_LP_FREQ");
+    fbHPOnParam = apvts.getRawParameterValue("FB_HP_ON");
+    fbLPOnParam = apvts.getRawParameterValue("FB_LP_ON");
 }
 
 ZeitraumProcessor::~ZeitraumProcessor() {}
@@ -74,6 +87,54 @@ ZeitraumProcessor::createParameterLayout()
             juce::NormalisableRange<float>(0.0f, 1.0f, 0.001f),
             1.0f));
     }
+
+    // Feedback gain parameters (8 individual taps + 4 preset mixes)
+    for (int i = 1; i <= 8; ++i)
+    {
+        auto id = juce::String(i);
+        layout.add(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID{"FB_TAP" + id, 1},
+            "FB Tap " + id,
+            juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
+            0.0f, "%"));
+    }
+
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"FB_ODD", 1}, "FB Odd",
+        juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
+        0.0f, "%"));
+
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"FB_EVEN", 1}, "FB Even",
+        juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
+        0.0f, "%"));
+
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"FB_RISING", 1}, "FB Rising",
+        juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
+        0.0f, "%"));
+
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"FB_FALLING", 1}, "FB Falling",
+        juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
+        0.0f, "%"));
+
+    // Feedback filter parameters
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"FB_HP_FREQ", 1}, "FB HP Freq",
+        juce::NormalisableRange<float>(20.0f, 2000.0f, 0.1f, 0.3f),
+        20.0f, "Hz"));
+
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"FB_LP_FREQ", 1}, "FB LP Freq",
+        juce::NormalisableRange<float>(200.0f, 20000.0f, 0.1f, 0.3f),
+        20000.0f, "Hz"));
+
+    layout.add(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{"FB_HP_ON", 1}, "FB HP On", false));
+
+    layout.add(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{"FB_LP_ON", 1}, "FB LP On", false));
 
     return layout;
 }
@@ -148,9 +209,22 @@ void ZeitraumProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         tapLevels[i] = tapLevelParams[i]->load();
     }
 
-    // Process delay engine (writes wet signal into buffer)
+    // Build feedback gain array (12 values: 8 taps + 4 preset mixes)
+    float feedbackGains[12];
+    for (int i = 0; i < 8; ++i)
+        feedbackGains[i] = fbTapGainParams[i]->load() / 100.0f;
+    for (int i = 0; i < 4; ++i)
+        feedbackGains[8 + i] = fbMixGainParams[i]->load() / 100.0f;
+
+    float fbHPFreq = fbHPFreqParam->load();
+    float fbLPFreq = fbLPFreqParam->load();
+    bool fbHPOn = fbHPOnParam->load() > 0.5f;
+    bool fbLPOn = fbLPOnParam->load() > 0.5f;
+
+    // Process delay engine with feedback (writes wet signal into buffer)
     delayEngine.process(buffer, baseDelay, multiplier, character, quantize,
-                        tapPositions, tapLevels);
+                        tapPositions, tapLevels, feedbackGains,
+                        fbHPFreq, fbLPFreq, fbHPOn, fbLPOn);
 
     // Mix wet with dry via DryWetMixer
     dryWetMixer.mixWetSamples(block);
@@ -239,7 +313,7 @@ void ZeitraumProcessor::getStateInformation(juce::MemoryBlock& destData)
         jassertfalse;
         return;
     }
-    xml->setAttribute("pluginVersion", 1);
+    xml->setAttribute("pluginVersion", 2);
     copyXmlToBinary(*xml, destData);
 }
 

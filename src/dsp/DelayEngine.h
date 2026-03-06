@@ -2,6 +2,9 @@
 #include "TapReader.h"
 #include "CharacterProcessor.h"
 #include "OnePoleSmooth.h"
+#include "FeedbackMatrix.h"
+#include "FeedbackFilter.h"
+#include "FeedbackSaturator.h"
 #include <juce_dsp/juce_dsp.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <algorithm>
@@ -43,6 +46,11 @@ public:
 
         characterProcessor.prepare(sampleRate, 2);
 
+        // Feedback components
+        feedbackMatrix.prepare(sampleRate, maxBlockSize);
+        feedbackFilter.prepare(sampleRate);
+        feedbackSaturator.prepare(sampleRate);
+
         // Smoothing times: longer for delay-time parameters to avoid
         // read-pointer discontinuities that cause audible clicks
         baseDelaySmoother.setSampleRate(sampleRate);
@@ -64,13 +72,17 @@ public:
         }
     }
 
+    // Full process with feedback parameters
     void process(juce::AudioBuffer<float>& buffer,
                  float baseDelayMs,
                  float multiplier,
                  float characterAmount,
                  bool quantize,
                  const float* tapPositions,
-                 const float* tapLevels)
+                 const float* tapLevels,
+                 const float* feedbackGains,
+                 float fbHPFreq, float fbLPFreq,
+                 bool fbHPOn, bool fbLPOn)
     {
         const int numSamples = buffer.getNumSamples();
         const int numChannels = std::min(buffer.getNumChannels(), 2);
@@ -101,6 +113,18 @@ public:
             taps[t].setLevel(tapLevels[t]);
         }
 
+        // Set feedback gains and filter params
+        for (int s = 0; s < FeedbackMatrix::numSources; ++s)
+            feedbackMatrix.setSourceGain(s, feedbackGains[s]);
+
+        feedbackFilter.setHPFrequency(fbHPFreq);
+        feedbackFilter.setLPFrequency(fbLPFreq);
+        feedbackFilter.setHPBypassed(!fbHPOn);
+        feedbackFilter.setLPBypassed(!fbLPOn);
+
+        // Pre-compute smoothed gains BEFORE channel loop (smoother separation)
+        feedbackMatrix.prepareSmoothGains(numSamples);
+
         // Pre-compute per-sample smoothed values for base delay, multiplier,
         // character, and tap delay/level so they advance exactly once per sample
         // (not once per channel).
@@ -118,30 +142,76 @@ public:
             }
         }
 
+        // Interleaved per-sample processing across channels for proper
+        // stereo-linked saturation (both channels' energy at each sample)
+        float* channelData[2] = {nullptr, nullptr};
         for (int ch = 0; ch < numChannels; ++ch)
+            channelData[ch] = buffer.getWritePointer(ch);
+
+        for (size_t i = 0; i < static_cast<size_t>(numSamples); ++i)
         {
-            auto* channelData = buffer.getWritePointer(ch);
+            float fbBusPerCh[2] = {0.0f, 0.0f};
+            float inputSamples[2] = {0.0f, 0.0f};
 
-            for (size_t i = 0; i < static_cast<size_t>(numSamples); ++i)
+            // Save original input before overwriting with wet output
+            for (int ch = 0; ch < numChannels; ++ch)
+                inputSamples[ch] = channelData[ch][i];
+
+            // For each channel: pop taps, compute feedback bus, filter
+            for (int ch = 0; ch < numChannels; ++ch)
             {
-                // Apply character to input before pushing to delay line
-                float processed = characterProcessor.process(ch, channelData[i],
-                                                              smoothedCharacter[i]);
-                delayLine[ch].pushSample(0, processed);
-
-                // Sum taps -- last tap updates read pointer
+                // (a) Pop all taps FIRST (read from previously-pushed data)
+                float tapOutputs[numTaps];
                 float wetSample = 0.0f;
                 for (int t = 0; t < numTaps; ++t)
                 {
                     bool isLastTap = (t == numTaps - 1);
-                    float tapOut = delayLine[ch].popSample(0,
+                    tapOutputs[t] = delayLine[ch].popSample(0,
                         smoothedTapDelay[t][i], isLastTap);
-                    wetSample += tapOut * smoothedTapLevel[t][i];
+                    wetSample += tapOutputs[t] * smoothedTapLevel[t][i];
                 }
 
-                channelData[i] = wetSample;
+                // (b) Compute feedback bus from matrix
+                float fbBus = feedbackMatrix.process(tapOutputs, static_cast<int>(i));
+
+                // (c) Filter feedback bus
+                fbBus = feedbackFilter.process(ch, fbBus);
+
+                fbBusPerCh[ch] = fbBus;
+                channelData[ch][i] = wetSample; // write wet output
+            }
+
+            // (d) Stereo-linked saturation: update RMS with both channels
+            float fbL = fbBusPerCh[0];
+            float fbR = (numChannels > 1) ? fbBusPerCh[1] : fbBusPerCh[0];
+            feedbackSaturator.updateRms(fbL, fbR);
+
+            // (e-f) For each channel: saturate, apply character, push input+feedback
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+                float fbBus = feedbackSaturator.process(fbBusPerCh[ch]);
+
+                float processed = characterProcessor.process(ch, inputSamples[ch],
+                                                              smoothedCharacter[i]);
+
+                // Push input + feedback to delay line
+                delayLine[ch].pushSample(0, processed + fbBus);
             }
         }
+    }
+
+    // Backward-compatible overload (no feedback -- all gains zero)
+    void process(juce::AudioBuffer<float>& buffer,
+                 float baseDelayMs,
+                 float multiplier,
+                 float characterAmount,
+                 bool quantize,
+                 const float* tapPositions,
+                 const float* tapLevels)
+    {
+        float zeroGains[FeedbackMatrix::numSources] = {};
+        process(buffer, baseDelayMs, multiplier, characterAmount, quantize,
+                tapPositions, tapLevels, zeroGains, 20.0f, 20000.0f, false, false);
     }
 
     void reset()
@@ -150,6 +220,9 @@ public:
             delayLine[ch].reset();
 
         characterProcessor.reset();
+        feedbackMatrix.reset();
+        feedbackFilter.reset();
+        feedbackSaturator.reset();
 
         baseDelaySmoother.reset(0.0f);
         multiplierSmoother.reset(1.0f);
@@ -163,6 +236,9 @@ private:
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd> delayLine[2];
     TapReader taps[numTaps];
     CharacterProcessor characterProcessor;
+    FeedbackMatrix feedbackMatrix;
+    FeedbackFilter feedbackFilter;
+    FeedbackSaturator feedbackSaturator;
 
     OnePoleSmooth baseDelaySmoother;
     OnePoleSmooth multiplierSmoother;

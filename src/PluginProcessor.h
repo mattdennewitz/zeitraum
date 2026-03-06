@@ -56,6 +56,14 @@ private:
     std::atomic<float>* tapPosParams[8] = {};
     std::atomic<float>* tapLevelParams[8] = {};
 
+    // Feedback parameter cache pointers
+    std::atomic<float>* fbTapGainParams[8] = {};
+    std::atomic<float>* fbMixGainParams[4] = {};  // ODD, EVEN, RISING, FALLING
+    std::atomic<float>* fbHPFreqParam = nullptr;
+    std::atomic<float>* fbLPFreqParam = nullptr;
+    std::atomic<float>* fbHPOnParam = nullptr;
+    std::atomic<float>* fbLPOnParam = nullptr;
+
     double currentSampleRate = 44100.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ZeitraumProcessor)
