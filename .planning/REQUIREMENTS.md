@@ -27,7 +27,7 @@
 ### Mixing & Output
 
 - [x] **MIX-01**: Plugin operates in stereo (stereo input, stereo output)
-- [ ] **MIX-02**: Plugin provides preset mixes: odd taps, even taps, rising-level, falling-level
+- [x] **MIX-02**: Plugin provides preset mixes: odd taps, even taps, rising-level, falling-level
 - [x] **MIX-03**: Preset mixes are available as feedback sources in the routing matrix
 
 ### Integration
@@ -100,7 +100,7 @@
 | FDBK-03 | Phase 3 | Complete |
 | FDBK-04 | Phase 3 | Complete |
 | MIX-01 | Phase 2 | Complete |
-| MIX-02 | Phase 3 | Pending |
+| MIX-02 | Phase 3 | Complete |
 | MIX-03 | Phase 3 | Complete |
 | INTG-01 | Phase 4 | Pending |
 | INTG-02 | Phase 4 | Pending |

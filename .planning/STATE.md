@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-last_updated: "2026-03-06T16:08:37Z"
+last_updated: "2026-03-06T16:30:00Z"
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 8
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State
@@ -18,23 +18,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** The feedback routing matrix and per-tap control over a shared serial delay line -- creating complex, evolving delay textures
-**Current focus:** Phase 3 in progress -- Feedback Matrix DSP classes
+**Current focus:** Phase 3 complete -- ready for Phase 4 (DAW Integration)
 
 ## Current Position
 
-Phase: 3 of 5 (Feedback Matrix) -- IN PROGRESS
-Plan: 3 of 4 in current phase (03-01, 03-02, 03-03 complete)
-Status: Completed 03-03 (Feedback Integration), next: 03-04
-Last activity: 2026-03-06 -- Completed 03-03-PLAN.md (Feedback Integration)
+Phase: 3 of 5 (Feedback Matrix) -- COMPLETE
+Plan: 4 of 4 in current phase (03-01, 03-02, 03-03, 03-04 complete)
+Status: Phase 3 complete, next: Phase 4 (DAW Integration)
+Last activity: 2026-03-06 -- Completed 03-04-PLAN.md (Output Mix Presets and AU Validation)
 
-Progress: [████████░░] 85%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
+- Total plans completed: 10
 - Average duration: 8min
-- Total execution time: 1.65 hours
+- Total execution time: 1.73 hours
 
 **By Phase:**
 
@@ -42,10 +42,10 @@ Progress: [████████░░] 85%
 |-------|-------|-------|----------|
 | 01-project-scaffolding | 2 | 8min | 4min |
 | 02-core-delay-engine | 4 | 72min | 18min |
-| 03-feedback-matrix | 3 | 19min | 6min |
+| 03-feedback-matrix | 4 | 24min | 6min |
 
 **Recent Trend:**
-- Last 5 plans: 3min, 45min, 3min, 7min
+- Last 5 plans: 45min, 3min, 7min, 9min, 5min
 - Trend: variable
 
 *Updated after each plan completion*
@@ -78,6 +78,8 @@ Recent decisions affecting current work:
 - Interleaved per-sample stereo processing in DelayEngine for correct stereo-linked saturation
 - Backward-compatible process() overload with zero feedback preserves Phase 2 behavior unchanged
 - pluginVersion bumped to 2 for state persistence; APVTS handles missing params by defaulting
+- Apply-and-reset pattern for OUTPUT_MIX: preset applies tap levels then resets selector to Manual, avoiding automation conflicts
+- Phase 3 complete: FDBK-01 through FDBK-04, MIX-02 all addressed; feedback matrix fully functional
 
 ### Pending Todos
 
@@ -92,5 +94,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 03-03-PLAN.md (Feedback Integration)
+Stopped at: Completed 03-04-PLAN.md (Output Mix Presets and AU Validation)
 Resume file: None
