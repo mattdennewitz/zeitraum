@@ -66,6 +66,7 @@ add_executable(ZeitraumTests
     test/dsp/CharacterProcessorTests.cpp
     test/dsp/TapReaderTests.cpp
     test/dsp/DelayEngineTests.cpp
+    test/dsp/FeedbackMatrixTests.cpp
     ${PLUGIN_SOURCES}
 )
 target_include_directories(ZeitraumTests PRIVATE ${CMAKE_SOURCE_DIR}/src)
