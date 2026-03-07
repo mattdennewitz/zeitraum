@@ -77,10 +77,11 @@ Plans:
   1. Every parameter (tap levels, positions, feedback gains, filters, mix) is visible and recordable in DAW automation lanes
   2. Enabling tempo sync locks delay times to host BPM with selectable note divisions (1/4, 1/8, dotted, triplet)
   3. Saving and reopening a DAW session restores all plugin state exactly -- including tap presets and feedback matrix settings
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: TBD
+- [ ] 04-01-PLAN.md -- Parameter group refactor, tempo sync params and processBlock logic, unit tests
+- [ ] 04-02-PLAN.md -- State persistence version bump, backward compat tests, AU validation checkpoint
 
 ### Phase 5: GUI
 **Goal**: Users interact with a clean, modern interface that makes the 8-tap delay and feedback matrix intuitive to use
@@ -105,5 +106,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. Project Scaffolding | 2/2 | Complete | 2026-03-05 |
 | 2. Core Delay Engine | 0/4 | Not started | - |
 | 3. Feedback Matrix | 4/4 | Complete | 2026-03-06 |
-| 4. DAW Integration | 0/1 | Not started | - |
+| 4. DAW Integration | 0/2 | Not started | - |
 | 5. GUI | 0/1 | Not started | - |
