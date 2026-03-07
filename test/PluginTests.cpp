@@ -607,3 +607,141 @@ TEST_CASE("Stereo channels both produce output", "[processor][dsp]") {
     REQUIRE(foundLeft);
     REQUIRE(foundRight);
 }
+
+// ============================================================
+// Phase 4: Tempo sync and parameter group tests
+// ============================================================
+
+TEST_CASE("Tempo sync parameters exist with correct defaults", "[parameters][tempo-sync]") {
+    ZeitraumProcessor proc;
+
+    // TEMPO_SYNC should exist and default to false (0)
+    auto* tempoSync = proc.apvts.getRawParameterValue("TEMPO_SYNC");
+    REQUIRE(tempoSync != nullptr);
+    REQUIRE(tempoSync->load() < 0.5f);
+
+    // NOTE_DIV should exist and default to index 1 (1/8 note)
+    auto* noteDiv = proc.apvts.getRawParameterValue("NOTE_DIV");
+    REQUIRE(noteDiv != nullptr);
+    REQUIRE_THAT(static_cast<double>(noteDiv->load()),
+                 Catch::Matchers::WithinAbs(1.0, 0.01));
+
+    // Verify NOTE_DIV is a choice parameter with 6 options
+    auto* param = dynamic_cast<juce::AudioParameterChoice*>(
+        proc.apvts.getParameter("NOTE_DIV"));
+    REQUIRE(param != nullptr);
+    REQUIRE(param->choices.size() == 6);
+    REQUIRE(param->choices[0] == "1/4");
+    REQUIRE(param->choices[1] == "1/8");
+    REQUIRE(param->choices[2] == "1/8 dot");
+    REQUIRE(param->choices[3] == "1/8 trip");
+    REQUIRE(param->choices[4] == "1/16");
+    REQUIRE(param->choices[5] == "1/2");
+}
+
+TEST_CASE("All parameters accessible after group refactor", "[parameters][groups]") {
+    ZeitraumProcessor proc;
+
+    // Spot-check parameters across all groups
+    REQUIRE(proc.apvts.getRawParameterValue("BASE_DELAY") != nullptr);
+    REQUIRE(proc.apvts.getRawParameterValue("MULTIPLIER") != nullptr);
+    REQUIRE(proc.apvts.getRawParameterValue("MIX") != nullptr);
+    REQUIRE(proc.apvts.getRawParameterValue("CHARACTER") != nullptr);
+    REQUIRE(proc.apvts.getRawParameterValue("QUANTIZE") != nullptr);
+    REQUIRE(proc.apvts.getRawParameterValue("TEMPO_SYNC") != nullptr);
+    REQUIRE(proc.apvts.getRawParameterValue("NOTE_DIV") != nullptr);
+
+    // Tap group params
+    REQUIRE(proc.apvts.getRawParameterValue("TAP1_POS") != nullptr);
+    REQUIRE(proc.apvts.getRawParameterValue("TAP4_LEVEL") != nullptr);
+    REQUIRE(proc.apvts.getRawParameterValue("TAP8_POS") != nullptr);
+
+    // Feedback group params
+    REQUIRE(proc.apvts.getRawParameterValue("FB_TAP1") != nullptr);
+    REQUIRE(proc.apvts.getRawParameterValue("FB_ODD") != nullptr);
+    REQUIRE(proc.apvts.getRawParameterValue("FB_HP_FREQ") != nullptr);
+    REQUIRE(proc.apvts.getRawParameterValue("FB_LP_ON") != nullptr);
+
+    // Output group
+    REQUIRE(proc.apvts.getRawParameterValue("OUTPUT_MIX") != nullptr);
+}
+
+TEST_CASE("Note division to ms conversion", "[dsp][tempo-sync]") {
+    // Test the formula: beatMs = 60000.0 / bpm; result = beatMs * divMultiplier
+    // divMultipliers: 1/4=1.0, 1/8=0.5, dotted 1/8=0.75, triplet 1/8=1/3, 1/16=0.25, 1/2=2.0
+
+    const double bpm = 120.0;
+    const double beatMs = 60000.0 / bpm; // 500ms per beat
+
+    static constexpr double divMultipliers[] = {
+        1.0,        // 1/4
+        0.5,        // 1/8
+        0.75,       // dotted 1/8
+        1.0 / 3.0,  // triplet 1/8
+        0.25,       // 1/16
+        2.0         // 1/2
+    };
+
+    // 120 BPM, 1/4 note = 500ms
+    REQUIRE_THAT(beatMs * divMultipliers[0],
+                 Catch::Matchers::WithinAbs(500.0, 0.1));
+
+    // 120 BPM, 1/8 note = 250ms
+    REQUIRE_THAT(beatMs * divMultipliers[1],
+                 Catch::Matchers::WithinAbs(250.0, 0.1));
+
+    // 120 BPM, dotted 1/8 = 375ms
+    REQUIRE_THAT(beatMs * divMultipliers[2],
+                 Catch::Matchers::WithinAbs(375.0, 0.1));
+
+    // 120 BPM, triplet 1/8 = ~166.67ms
+    REQUIRE_THAT(beatMs * divMultipliers[3],
+                 Catch::Matchers::WithinAbs(166.67, 0.1));
+
+    // 120 BPM, 1/16 = 125ms
+    REQUIRE_THAT(beatMs * divMultipliers[4],
+                 Catch::Matchers::WithinAbs(125.0, 0.1));
+
+    // 120 BPM, 1/2 = 1000ms
+    REQUIRE_THAT(beatMs * divMultipliers[5],
+                 Catch::Matchers::WithinAbs(1000.0, 0.1));
+
+    // Verify at different BPM (90 BPM)
+    const double beatMs90 = 60000.0 / 90.0; // 666.67ms
+    REQUIRE_THAT(beatMs90 * divMultipliers[0],
+                 Catch::Matchers::WithinAbs(666.67, 0.1));
+    REQUIRE_THAT(beatMs90 * divMultipliers[1],
+                 Catch::Matchers::WithinAbs(333.33, 0.1));
+}
+
+TEST_CASE("State round-trip preserves tempo sync params", "[state][tempo-sync]") {
+    juce::MemoryBlock savedState;
+    {
+        ZeitraumProcessor proc;
+
+        // Set TEMPO_SYNC to true
+        if (auto* param = proc.apvts.getParameter("TEMPO_SYNC"))
+            param->setValueNotifyingHost(1.0f);
+
+        // Set NOTE_DIV to 3 (triplet 1/8)
+        if (auto* param = proc.apvts.getParameter("NOTE_DIV"))
+            param->setValueNotifyingHost(param->convertTo0to1(3.0f));
+
+        proc.getStateInformation(savedState);
+    }
+
+    REQUIRE(savedState.getSize() > 0);
+
+    ZeitraumProcessor proc2;
+    proc2.setStateInformation(savedState.getData(),
+                               static_cast<int>(savedState.getSize()));
+
+    auto* tempoSync = proc2.apvts.getRawParameterValue("TEMPO_SYNC");
+    REQUIRE(tempoSync != nullptr);
+    REQUIRE(tempoSync->load() > 0.5f);
+
+    auto* noteDiv = proc2.apvts.getRawParameterValue("NOTE_DIV");
+    REQUIRE(noteDiv != nullptr);
+    REQUIRE_THAT(static_cast<double>(noteDiv->load()),
+                 Catch::Matchers::WithinAbs(3.0, 0.1));
+}
