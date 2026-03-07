@@ -34,7 +34,7 @@
 
 - [x] **INTG-01**: All parameters are DAW-automatable
 - [x] **INTG-02**: Tempo sync is available (on/off toggle) with host BPM and note divisions (1/4, 1/8, dotted, triplet)
-- [ ] **INTG-03**: Plugin state (all parameters + tap presets) saves and restores with DAW session
+- [x] **INTG-03**: Plugin state (all parameters + tap presets) saves and restores with DAW session
 - [x] **INTG-04**: Analog character approximation: bandwidth limiting, mild noise, gentle HF roll-off in delay path
 
 ### Plugin Infrastructure
@@ -104,7 +104,7 @@
 | MIX-03 | Phase 3 | Complete |
 | INTG-01 | Phase 4 | Complete |
 | INTG-02 | Phase 4 | Complete |
-| INTG-03 | Phase 4 | Pending |
+| INTG-03 | Phase 4 | Complete |
 | INTG-04 | Phase 2 | Complete |
 | INFR-01 | Phase 1 | Complete |
 | INFR-02 | Phase 1 | Complete |
