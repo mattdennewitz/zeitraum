@@ -67,6 +67,10 @@ private:
     // Output mix preset selector
     std::atomic<float>* outputMixParam = nullptr;
 
+    // Tempo sync parameters
+    std::atomic<float>* tempoSyncParam = nullptr;
+    std::atomic<float>* noteDivParam = nullptr;
+
     double currentSampleRate = 44100.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ZeitraumProcessor)

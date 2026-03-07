@@ -33,6 +33,9 @@ ZeitraumProcessor::ZeitraumProcessor()
     fbLPOnParam = apvts.getRawParameterValue("FB_LP_ON");
 
     outputMixParam = apvts.getRawParameterValue("OUTPUT_MIX");
+
+    tempoSyncParam = apvts.getRawParameterValue("TEMPO_SYNC");
+    noteDivParam = apvts.getRawParameterValue("NOTE_DIV");
 }
 
 ZeitraumProcessor::~ZeitraumProcessor() {}
@@ -42,106 +45,129 @@ ZeitraumProcessor::createParameterLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
-    // Base delay time: 10-150ms, skewed toward lower values
-    layout.add(std::make_unique<juce::AudioParameterFloat>(
+    // ---- Global group ----
+    auto globalGroup = std::make_unique<juce::AudioProcessorParameterGroup>(
+        "global", "Global", " | ");
+
+    globalGroup->addChild(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"BASE_DELAY", 1}, "Base Delay",
         juce::NormalisableRange<float>(10.0f, 150.0f, 0.1f, 0.5f),
         80.0f, "ms"));
 
-    // Multiplier: 1x to 33x (max total = 150*33 = 4950ms ~5s)
-    layout.add(std::make_unique<juce::AudioParameterFloat>(
+    globalGroup->addChild(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"MULTIPLIER", 1}, "Multiplier",
         juce::NormalisableRange<float>(1.0f, 33.0f, 0.01f, 0.4f),
         1.0f, "x"));
 
-    // Wet/dry mix: 0-100%
-    layout.add(std::make_unique<juce::AudioParameterFloat>(
+    globalGroup->addChild(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"MIX", 1}, "Mix",
         juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
         50.0f, "%"));
 
-    // Character: 0-100%
-    layout.add(std::make_unique<juce::AudioParameterFloat>(
+    globalGroup->addChild(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"CHARACTER", 1}, "Character",
         juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
         25.0f, "%"));
 
-    // Quantize toggle
-    layout.add(std::make_unique<juce::AudioParameterBool>(
+    globalGroup->addChild(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"QUANTIZE", 1}, "Quantize", false));
 
-    // Per-tap parameters (8 taps)
+    globalGroup->addChild(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{"TEMPO_SYNC", 1}, "Tempo Sync", false));
+
+    globalGroup->addChild(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"NOTE_DIV", 1}, "Note Division",
+        juce::StringArray{"1/4", "1/8", "1/8 dot", "1/8 trip", "1/16", "1/2"}, 1));
+
+    layout.add(std::move(globalGroup));
+
+    // ---- Per-tap groups (Tap 1..8) ----
     for (int i = 1; i <= 8; ++i)
     {
         auto id = juce::String(i);
+        auto tapGroup = std::make_unique<juce::AudioProcessorParameterGroup>(
+            "tap" + id, "Tap " + id, " | ");
 
-        // Tap position: 0.0-1.0 ratio along delay line
-        layout.add(std::make_unique<juce::AudioParameterFloat>(
+        tapGroup->addChild(std::make_unique<juce::AudioParameterFloat>(
             juce::ParameterID{"TAP" + id + "_POS", 1},
             "Tap " + id + " Position",
             juce::NormalisableRange<float>(0.0f, 1.0f, 0.001f),
-            static_cast<float>(i) / 8.0f));
+            static_cast<float>(i) / 8.0f,
+            juce::AudioParameterFloatAttributes()
+                .withStringFromValueFunction([](float v, int) {
+                    return juce::String(v * 100.0f, 1) + "%";
+                })));
 
-        // Tap level: 0.0-1.0 linear gain
-        layout.add(std::make_unique<juce::AudioParameterFloat>(
+        tapGroup->addChild(std::make_unique<juce::AudioParameterFloat>(
             juce::ParameterID{"TAP" + id + "_LEVEL", 1},
             "Tap " + id + " Level",
             juce::NormalisableRange<float>(0.0f, 1.0f, 0.001f),
             1.0f));
+
+        layout.add(std::move(tapGroup));
     }
 
-    // Feedback gain parameters (8 individual taps + 4 preset mixes)
+    // ---- Feedback group ----
+    auto fbGroup = std::make_unique<juce::AudioProcessorParameterGroup>(
+        "feedback", "Feedback", " | ");
+
     for (int i = 1; i <= 8; ++i)
     {
         auto id = juce::String(i);
-        layout.add(std::make_unique<juce::AudioParameterFloat>(
+        fbGroup->addChild(std::make_unique<juce::AudioParameterFloat>(
             juce::ParameterID{"FB_TAP" + id, 1},
             "FB Tap " + id,
             juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
             0.0f, "%"));
     }
 
-    layout.add(std::make_unique<juce::AudioParameterFloat>(
+    fbGroup->addChild(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"FB_ODD", 1}, "FB Odd",
         juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
         0.0f, "%"));
 
-    layout.add(std::make_unique<juce::AudioParameterFloat>(
+    fbGroup->addChild(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"FB_EVEN", 1}, "FB Even",
         juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
         0.0f, "%"));
 
-    layout.add(std::make_unique<juce::AudioParameterFloat>(
+    fbGroup->addChild(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"FB_RISING", 1}, "FB Rising",
         juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
         0.0f, "%"));
 
-    layout.add(std::make_unique<juce::AudioParameterFloat>(
+    fbGroup->addChild(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"FB_FALLING", 1}, "FB Falling",
         juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
         0.0f, "%"));
 
-    // Feedback filter parameters
-    layout.add(std::make_unique<juce::AudioParameterFloat>(
+    fbGroup->addChild(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"FB_HP_FREQ", 1}, "FB HP Freq",
         juce::NormalisableRange<float>(20.0f, 2000.0f, 0.1f, 0.3f),
         20.0f, "Hz"));
 
-    layout.add(std::make_unique<juce::AudioParameterFloat>(
+    fbGroup->addChild(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"FB_LP_FREQ", 1}, "FB LP Freq",
         juce::NormalisableRange<float>(200.0f, 20000.0f, 0.1f, 0.3f),
         20000.0f, "Hz"));
 
-    layout.add(std::make_unique<juce::AudioParameterBool>(
+    fbGroup->addChild(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"FB_HP_ON", 1}, "FB HP On", false));
 
-    layout.add(std::make_unique<juce::AudioParameterBool>(
+    fbGroup->addChild(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"FB_LP_ON", 1}, "FB LP On", false));
 
-    // Output mix preset selector (apply-and-reset trigger)
-    layout.add(std::make_unique<juce::AudioParameterChoice>(
+    layout.add(std::move(fbGroup));
+
+    // ---- Output group ----
+    auto outputGroup = std::make_unique<juce::AudioProcessorParameterGroup>(
+        "output", "Output", " | ");
+
+    outputGroup->addChild(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"OUTPUT_MIX", 1}, "Output Mix",
         juce::StringArray{"Manual", "Odd", "Even", "Rising", "Falling"}, 0));
+
+    layout.add(std::move(outputGroup));
 
     return layout;
 }
@@ -232,6 +258,36 @@ void ZeitraumProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     // Load parameter values atomically
     float baseDelay = baseDelayParam->load();
+
+    if (tempoSyncParam->load() > 0.5f)
+    {
+        double bpm = 120.0; // fallback
+        if (auto* playHead = getPlayHead())
+        {
+            if (auto pos = playHead->getPosition())
+            {
+                if (auto hostBpm = pos->getBpm())
+                    bpm = *hostBpm;
+            }
+        }
+
+        int divIndex = static_cast<int>(noteDivParam->load());
+        static constexpr double divMultipliers[] = {
+            1.0,        // 1/4
+            0.5,        // 1/8
+            0.75,       // dotted 1/8
+            1.0 / 3.0,  // triplet 1/8
+            0.25,       // 1/16
+            2.0         // 1/2
+        };
+
+        double beatMs = 60000.0 / bpm;
+        baseDelay = static_cast<float>(beatMs * divMultipliers[divIndex]);
+
+        // Clamp to prevent exceeding delay line capacity
+        baseDelay = std::min(baseDelay, 150.0f);
+    }
+
     float multiplier = multiplierParam->load();
     float character = characterParam->load() / 100.0f;
     bool quantize = quantizeParam->load() > 0.5f;
@@ -349,7 +405,7 @@ void ZeitraumProcessor::getStateInformation(juce::MemoryBlock& destData)
         jassertfalse;
         return;
     }
-    xml->setAttribute("pluginVersion", 2);
+    xml->setAttribute("pluginVersion", 3);
     copyXmlToBinary(*xml, destData);
 }
 

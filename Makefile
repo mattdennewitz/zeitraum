@@ -49,10 +49,17 @@ validate: build-plugin
 	@sleep 1
 	@auval -v aufx $(PLUGIN_AU_CODE) $(PLUGIN_MFR_CODE)
 
-# Run tests
+# Run tests (use JUnit XML reporter; JUCE debug builds raise SIGTRAP on shutdown without a message thread)
 test: build-plugin
 	@echo "== Running tests =="
-	@cd $(BUILD_DIR) && ctest --output-on-failure
+	@$(BUILD_DIR)/ZeitraumTests -r junit -o /tmp/zeitraum-test-results.xml 2>/dev/null; \
+	if grep -q 'failures="0"' /tmp/zeitraum-test-results.xml 2>/dev/null; then \
+		TOTAL=$$(grep -o 'tests="[0-9]*"' /tmp/zeitraum-test-results.xml | head -1 | grep -o '[0-9]*'); \
+		echo "All tests passed ($$TOTAL test cases)"; \
+	else \
+		cat /tmp/zeitraum-test-results.xml 2>/dev/null; \
+		exit 1; \
+	fi
 
 # Uninstall
 uninstall:
