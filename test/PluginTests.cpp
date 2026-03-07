@@ -714,6 +714,160 @@ TEST_CASE("Note division to ms conversion", "[dsp][tempo-sync]") {
                  Catch::Matchers::WithinAbs(333.33, 0.1));
 }
 
+// ============================================================
+// Phase 4: State persistence v3 and backward compatibility
+// ============================================================
+
+TEST_CASE("State version is 3", "[state][version]") {
+    ZeitraumProcessor proc;
+
+    juce::MemoryBlock savedState;
+    proc.getStateInformation(savedState);
+    REQUIRE(savedState.getSize() > 0);
+
+    std::unique_ptr<juce::XmlElement> xml(
+        juce::AudioProcessor::getXmlFromBinary(savedState.getData(),
+                                                static_cast<int>(savedState.getSize())));
+    REQUIRE(xml != nullptr);
+    REQUIRE(xml->getIntAttribute("pluginVersion", 0) == 3);
+}
+
+TEST_CASE("Backward compatible with version 2 state", "[state][version][backward]") {
+    // Construct a version 2 XML state with some params set but WITHOUT
+    // TEMPO_SYNC or NOTE_DIV attributes -- simulating pre-Phase 4 state
+    ZeitraumProcessor tempProc;
+
+    // Build a minimal version 2 state with BASE_DELAY=100
+    juce::MemoryBlock savedState;
+    {
+        ZeitraumProcessor proc;
+        if (auto* param = proc.apvts.getParameter("BASE_DELAY"))
+            param->setValueNotifyingHost(param->convertTo0to1(100.0f));
+        proc.getStateInformation(savedState);
+    }
+
+    // Parse XML, downgrade to version 2, remove tempo sync params
+    std::unique_ptr<juce::XmlElement> xml(
+        juce::AudioProcessor::getXmlFromBinary(savedState.getData(),
+                                                static_cast<int>(savedState.getSize())));
+    REQUIRE(xml != nullptr);
+    xml->setAttribute("pluginVersion", 2);
+
+    // Remove TEMPO_SYNC and NOTE_DIV from the XML tree
+    // These are stored as param elements inside group sub-elements
+    std::function<void(juce::XmlElement*)> removeTempoParams;
+    removeTempoParams = [&](juce::XmlElement* parent) {
+        for (auto* child = parent->getFirstChildElement(); child != nullptr;)
+        {
+            auto* next = child->getNextElement();
+            auto id = child->getStringAttribute("id");
+            if (id == "TEMPO_SYNC" || id == "NOTE_DIV")
+                parent->removeChildElement(child, true);
+            else
+                removeTempoParams(child);
+            child = next;
+        }
+    };
+    removeTempoParams(xml.get());
+
+    // Re-serialize as binary
+    juce::MemoryBlock v2State;
+    juce::AudioProcessor::copyXmlToBinary(*xml, v2State);
+
+    // Load into a fresh processor
+    ZeitraumProcessor proc2;
+    proc2.setStateInformation(v2State.getData(),
+                               static_cast<int>(v2State.getSize()));
+
+    auto load = [&](const juce::String& id) {
+        return proc2.apvts.getRawParameterValue(id)->load();
+    };
+
+    // BASE_DELAY should be restored to ~100
+    REQUIRE_THAT(load("BASE_DELAY"), Catch::Matchers::WithinAbs(100.0, 1.0));
+
+    // TEMPO_SYNC should default to false (0)
+    REQUIRE(load("TEMPO_SYNC") < 0.5f);
+
+    // NOTE_DIV should default to 1 (1/8 note)
+    REQUIRE_THAT(static_cast<double>(load("NOTE_DIV")),
+                 Catch::Matchers::WithinAbs(1.0, 0.1));
+}
+
+TEST_CASE("Full state round-trip with all Phase 4 params", "[state][version]") {
+    juce::MemoryBlock savedState;
+    {
+        ZeitraumProcessor proc;
+
+        // Set non-default values for Phase 4 params
+        if (auto* param = proc.apvts.getParameter("BASE_DELAY"))
+            param->setValueNotifyingHost(param->convertTo0to1(120.0f));
+        if (auto* param = proc.apvts.getParameter("TEMPO_SYNC"))
+            param->setValueNotifyingHost(1.0f);  // true
+        if (auto* param = proc.apvts.getParameter("NOTE_DIV"))
+            param->setValueNotifyingHost(param->convertTo0to1(3.0f));  // triplet 1/8
+        if (auto* param = proc.apvts.getParameter("FB_TAP1"))
+            param->setValueNotifyingHost(param->convertTo0to1(50.0f));
+        if (auto* param = proc.apvts.getParameter("TAP3_POS"))
+            param->setValueNotifyingHost(param->convertTo0to1(0.5f));
+
+        proc.getStateInformation(savedState);
+    }
+
+    REQUIRE(savedState.getSize() > 0);
+
+    ZeitraumProcessor proc2;
+    proc2.setStateInformation(savedState.getData(),
+                               static_cast<int>(savedState.getSize()));
+
+    auto load = [&](const juce::String& id) {
+        return proc2.apvts.getRawParameterValue(id)->load();
+    };
+
+    REQUIRE_THAT(load("BASE_DELAY"), Catch::Matchers::WithinAbs(120.0, 1.0));
+    REQUIRE(load("TEMPO_SYNC") > 0.5f);
+    REQUIRE_THAT(static_cast<double>(load("NOTE_DIV")),
+                 Catch::Matchers::WithinAbs(3.0, 0.1));
+    REQUIRE_THAT(load("FB_TAP1"), Catch::Matchers::WithinAbs(50.0, 2.0));
+    REQUIRE_THAT(load("TAP3_POS"), Catch::Matchers::WithinAbs(0.5, 0.01));
+}
+
+TEST_CASE("setStateInformation handles null data", "[state][robustness]") {
+    ZeitraumProcessor proc;
+
+    // Record default BASE_DELAY before the call
+    float defaultDelay = proc.apvts.getRawParameterValue("BASE_DELAY")->load();
+
+    // Should not crash with nullptr / zero size
+    proc.setStateInformation(nullptr, 0);
+
+    // State should be unchanged
+    REQUIRE_THAT(static_cast<double>(proc.apvts.getRawParameterValue("BASE_DELAY")->load()),
+                 Catch::Matchers::WithinAbs(static_cast<double>(defaultDelay), 0.5));
+}
+
+TEST_CASE("setStateInformation rejects wrong XML tag", "[state][robustness]") {
+    ZeitraumProcessor proc;
+
+    // Record default BASE_DELAY
+    float defaultDelay = proc.apvts.getRawParameterValue("BASE_DELAY")->load();
+
+    // Create XML with wrong tag name
+    juce::XmlElement wrongXml("WRONG_TAG");
+    wrongXml.setAttribute("pluginVersion", 3);
+    wrongXml.setAttribute("BASE_DELAY", 120.0);
+
+    juce::MemoryBlock wrongState;
+    juce::AudioProcessor::copyXmlToBinary(wrongXml, wrongState);
+
+    proc.setStateInformation(wrongState.getData(),
+                              static_cast<int>(wrongState.getSize()));
+
+    // State should be unchanged -- wrong tag rejected
+    REQUIRE_THAT(static_cast<double>(proc.apvts.getRawParameterValue("BASE_DELAY")->load()),
+                 Catch::Matchers::WithinAbs(static_cast<double>(defaultDelay), 0.5));
+}
+
 TEST_CASE("State round-trip preserves tempo sync params", "[state][tempo-sync]") {
     juce::MemoryBlock savedState;
     {
