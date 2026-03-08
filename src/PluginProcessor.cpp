@@ -330,7 +330,7 @@ bool ZeitraumProcessor::hasEditor() const { return true; }
 
 juce::AudioProcessorEditor* ZeitraumProcessor::createEditor()
 {
-    return new juce::GenericAudioProcessorEditor(*this);
+    return new ZeitraumEditor(*this);
 }
 
 void ZeitraumProcessor::saveTapPreset(const juce::String& name)
