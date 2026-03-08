@@ -61,6 +61,9 @@ public:
         float newValue = e.position.x / static_cast<float>(getWidth());
         newValue = juce::jlimit(0.0f, 1.0f, newValue);
 
+        currentValue = newValue;
+        repaint();
+
         ignoreCallbacks = true;
         attachment.setValueAsPartOfGesture(newValue);
         ignoreCallbacks = false;
@@ -93,7 +96,11 @@ public:
         {
             float typedPct = label->getText().getFloatValue();
             float newVal = juce::jlimit(0.0f, 1.0f, typedPct / 100.0f);
+            currentValue = newVal;
+            repaint();
+            ignoreCallbacks = true;
             attachment.setValueAsCompleteGesture(newVal);
+            ignoreCallbacks = false;
         };
 
         label->onEditorHide = [this, label]()

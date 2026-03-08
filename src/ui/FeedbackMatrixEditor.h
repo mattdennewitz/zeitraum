@@ -61,18 +61,6 @@ public:
         lpOnToggle.setButtonText("LP");
         addAndMakeVisible(lpOnToggle);
 
-        hpLabel.setText("HP", juce::dontSendNotification);
-        hpLabel.setFont(juce::FontOptions(11.0f));
-        hpLabel.setColour(juce::Label::textColourId, juce::Colour(0xff888888));
-        hpLabel.setJustificationType(juce::Justification::centredRight);
-        addAndMakeVisible(hpLabel);
-
-        lpLabel.setText("LP", juce::dontSendNotification);
-        lpLabel.setFont(juce::FontOptions(11.0f));
-        lpLabel.setColour(juce::Label::textColourId, juce::Colour(0xff888888));
-        lpLabel.setJustificationType(juce::Justification::centredRight);
-        addAndMakeVisible(lpLabel);
-
         // Create attachments
         hpFreqAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
             apvts, "FB_HP_FREQ", hpFreqSlider);
@@ -121,14 +109,11 @@ public:
         bounds.removeFromTop(sectionGap);
 
         const int filterRowHeight = 22;
-        const int labelWidth = 24;
-        const int toggleWidth = 44;
+        const int toggleWidth = 50;
         const int filterGap = 4;
 
         // HP row
         auto hpRow = bounds.removeFromTop(filterRowHeight);
-        hpLabel.setBounds(hpRow.removeFromLeft(labelWidth));
-        hpRow.removeFromLeft(2);
         hpOnToggle.setBounds(hpRow.removeFromLeft(toggleWidth));
         hpRow.removeFromLeft(filterGap);
         hpFreqSlider.setBounds(hpRow);
@@ -137,8 +122,6 @@ public:
 
         // LP row
         auto lpRow = bounds.removeFromTop(filterRowHeight);
-        lpLabel.setBounds(lpRow.removeFromLeft(labelWidth));
-        lpRow.removeFromLeft(2);
         lpOnToggle.setBounds(lpRow.removeFromLeft(toggleWidth));
         lpRow.removeFromLeft(filterGap);
         lpFreqSlider.setBounds(lpRow);
@@ -158,8 +141,6 @@ private:
     juce::Slider lpFreqSlider;
     juce::ToggleButton hpOnToggle;
     juce::ToggleButton lpOnToggle;
-    juce::Label hpLabel;
-    juce::Label lpLabel;
 
     // Filter attachments
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> hpFreqAttachment;

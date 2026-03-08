@@ -95,11 +95,9 @@ public:
 
     void mouseDown(const juce::MouseEvent& e) override
     {
-        if (isNearTopEdge(e.position.y))
-        {
-            dragging = true;
-            attachment.beginGesture();
-        }
+        juce::ignoreUnused(e);
+        dragging = true;
+        attachment.beginGesture();
     }
 
     void mouseDrag(const juce::MouseEvent& e) override
@@ -109,6 +107,9 @@ public:
         // Inverted: top of component = 1.0, bottom = 0.0
         float newValue = 1.0f - (e.position.y / static_cast<float>(getHeight()));
         newValue = juce::jlimit(0.0f, 1.0f, newValue);
+
+        currentValue = newValue;
+        repaint();
 
         ignoreCallbacks = true;
         attachment.setValueAsPartOfGesture(newValue);
@@ -176,12 +177,6 @@ private:
         if (ignoreCallbacks) return;
         currentValue = newValue;
         repaint();
-    }
-
-    bool isNearTopEdge(float mouseY) const
-    {
-        float barTopY = static_cast<float>(getHeight()) * (1.0f - currentValue);
-        return std::abs(mouseY - barTopY) < 8.0f;
     }
 
     juce::AudioProcessorValueTreeState& apvtsRef;

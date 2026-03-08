@@ -60,6 +60,9 @@ public:
         float newValue = 1.0f - (e.position.y / static_cast<float>(getHeight()));
         newValue = juce::jlimit(0.0f, 1.0f, newValue);
 
+        currentValue = newValue;
+        repaint();
+
         ignoreCallbacks = true;
         attachment.setValueAsPartOfGesture(newValue);
         ignoreCallbacks = false;
