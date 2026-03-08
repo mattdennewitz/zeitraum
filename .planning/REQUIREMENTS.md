@@ -47,8 +47,8 @@
 ### GUI
 
 - [x] **GUI-01**: Clean/modern DAW-style GUI (not skeuomorphic)
-- [ ] **GUI-02**: Visual display of tap positions and timing
-- [ ] **GUI-03**: Per-tap level controls visible and adjustable in GUI
+- [x] **GUI-02**: Visual display of tap positions and timing
+- [x] **GUI-03**: Per-tap level controls visible and adjustable in GUI
 - [x] **GUI-04**: Smooth parameter changes throughout (no clicks or zipper noise)
 
 ## v2 Requirements
@@ -111,8 +111,8 @@
 | INFR-03 | Phase 1 | Complete |
 | INFR-04 | Phase 2 | Complete |
 | GUI-01 | Phase 5 | Complete |
-| GUI-02 | Phase 5 | Pending |
-| GUI-03 | Phase 5 | Pending |
+| GUI-02 | Phase 5 | Complete |
+| GUI-03 | Phase 5 | Complete |
 | GUI-04 | Phase 2 | Complete |
 
 **Coverage:**

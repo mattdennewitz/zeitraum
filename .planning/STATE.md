@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-last_updated: "2026-03-08T15:15:01Z"
+last_updated: "2026-03-08T15:19:29Z"
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 15
-  completed_plans: 13
+  completed_plans: 14
 ---
 
 # Project State
@@ -23,18 +23,18 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 ## Current Position
 
 Phase: 5 of 5 (GUI)
-Plan: 1 of 3 in current phase (1 complete)
+Plan: 2 of 3 in current phase (2 complete)
 Status: Phase 5 in progress
-Last activity: 2026-03-08 -- Completed 05-01-PLAN.md (Editor Shell and Theme)
+Last activity: 2026-03-08 -- Completed 05-02-PLAN.md (Tap Position Bars and Level Faders)
 
-Progress: [█████████████] 87%
+Progress: [██████████████] 93%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
+- Total plans completed: 14
 - Average duration: 8min
-- Total execution time: 1.90 hours
+- Total execution time: 1.93 hours
 
 **By Phase:**
 
@@ -44,10 +44,10 @@ Progress: [█████████████] 87%
 | 02-core-delay-engine | 4 | 72min | 18min |
 | 03-feedback-matrix | 4 | 24min | 6min |
 | 04-daw-integration | 2 | 8min | 4min |
-| 05-gui | 1 | 2min | 2min |
+| 05-gui | 2 | 4min | 2min |
 
 **Recent Trend:**
-- Last 5 plans: 9min, 5min, 5min, 3min, 2min
+- Last 5 plans: 5min, 5min, 3min, 2min, 2min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -89,6 +89,9 @@ Recent decisions affecting current work:
 - LookAndFeel declared as first editor member for correct destruction order
 - ComboBox items matched to exact APVTS AudioParameterChoice strings, not plan's suggested labels
 - Labels use attachToComponent for automatic positioning left of sliders
+- TapPositionBar reads BASE_DELAY/MULTIPLIER/QUANTIZE via getParameter()->convertFrom0to1() on message thread for ms display and grid
+- Level fader uses full-area drag; position bar requires clicking near top edge
+- 3px gap between tap columns, 2-3px gaps between position bar and fader within each column
 
 ### Pending Todos
 
@@ -103,5 +106,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-08
-Stopped at: Completed 05-01-PLAN.md (Editor Shell and Theme)
+Stopped at: Completed 05-02-PLAN.md (Tap Position Bars and Level Faders)
 Resume file: None
