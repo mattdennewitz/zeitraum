@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-07T15:05:46.870Z"
+status: in-progress
+last_updated: "2026-03-08T15:15:01Z"
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 4
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 15
+  completed_plans: 13
 ---
 
 # Project State
@@ -18,23 +18,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** The feedback routing matrix and per-tap control over a shared serial delay line -- creating complex, evolving delay textures
-**Current focus:** Phase 4 complete -- ready for Phase 5 (GUI)
+**Current focus:** Phase 5 in progress -- building custom GUI
 
 ## Current Position
 
-Phase: 4 of 5 (DAW Integration) -- COMPLETE
-Plan: 2 of 2 in current phase (all complete)
-Status: Phase 4 complete, ready for Phase 5
-Last activity: 2026-03-07 -- Completed 04-02-PLAN.md (State Persistence and AU Validation)
+Phase: 5 of 5 (GUI)
+Plan: 1 of 3 in current phase (1 complete)
+Status: Phase 5 in progress
+Last activity: 2026-03-08 -- Completed 05-01-PLAN.md (Editor Shell and Theme)
 
-Progress: [████████████░] 92%
+Progress: [█████████████] 87%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12
+- Total plans completed: 13
 - Average duration: 8min
-- Total execution time: 1.87 hours
+- Total execution time: 1.90 hours
 
 **By Phase:**
 
@@ -44,9 +44,10 @@ Progress: [████████████░] 92%
 | 02-core-delay-engine | 4 | 72min | 18min |
 | 03-feedback-matrix | 4 | 24min | 6min |
 | 04-daw-integration | 2 | 8min | 4min |
+| 05-gui | 1 | 2min | 2min |
 
 **Recent Trend:**
-- Last 5 plans: 7min, 9min, 5min, 5min, 3min
+- Last 5 plans: 9min, 5min, 5min, 3min, 2min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -85,6 +86,9 @@ Recent decisions affecting current work:
 - Tempo-synced baseDelay clamped to 150ms to prevent delay line overflow
 - Makefile test runner switched from CTest to JUnit XML reporter to handle JUCE debug SIGTRAP
 - Phase 4 complete: INTG-01, INTG-02, INTG-03 all addressed; parameter groups, tempo sync, state persistence v3 verified via AU validation and DAW testing
+- LookAndFeel declared as first editor member for correct destruction order
+- ComboBox items matched to exact APVTS AudioParameterChoice strings, not plan's suggested labels
+- Labels use attachToComponent for automatic positioning left of sliders
 
 ### Pending Todos
 
@@ -98,6 +102,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07
-Stopped at: Completed 04-02-PLAN.md (State Persistence and AU Validation)
+Last session: 2026-03-08
+Stopped at: Completed 05-01-PLAN.md (Editor Shell and Theme)
 Resume file: None
