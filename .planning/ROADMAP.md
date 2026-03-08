@@ -91,10 +91,12 @@ Plans:
   1. Plugin window displays a clean/modern DAW-style interface (not skeuomorphic hardware imitation)
   2. Tap positions and timing are visually displayed and can be adjusted by dragging
   3. Per-tap level controls are visible and adjustable directly in the GUI
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 05-01: TBD
+- [ ] 05-01-PLAN.md -- LookAndFeel theme, editor shell with resizable layout, top bar global controls
+- [ ] 05-02-PLAN.md -- TapPositionBar, TapLevelFader, TapColumn components wired into left panel
+- [ ] 05-03-PLAN.md -- FeedbackMatrixEditor, filter controls, tap presets, AU validation checkpoint
 
 ## Progress
 
@@ -107,4 +109,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 2. Core Delay Engine | 0/4 | Not started | - |
 | 3. Feedback Matrix | 4/4 | Complete | 2026-03-06 |
 | 4. DAW Integration | 2/2 | Complete    | 2026-03-07 |
-| 5. GUI | 0/1 | Not started | - |
+| 5. GUI | 0/3 | Not started | - |
