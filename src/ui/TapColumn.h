@@ -19,26 +19,25 @@ public:
         addAndMakeVisible(numberLabel);
     }
 
+    // Editor-driven layout: place each sub-component in its designated zone
+    void setPositionBarBounds(juce::Rectangle<int> bounds) { positionBar.setBounds(bounds); }
+    void setLevelFaderBounds(juce::Rectangle<int> bounds) { levelFader.setBounds(bounds); }
+    void setNumberLabelBounds(juce::Rectangle<int> bounds) { numberLabel.setBounds(bounds); }
+
     void resized() override
     {
+        // Only used if setBounds is called on the TapColumn itself (fallback)
         auto bounds = getLocalBounds();
 
-        // Number label at bottom: 20px
         auto labelArea = bounds.removeFromBottom(20);
         numberLabel.setBounds(labelArea);
-
-        // Small gap
         bounds.removeFromBottom(2);
 
-        // Level fader: 25% of remaining height
         int faderHeight = juce::roundToInt(bounds.getHeight() * 0.25f);
         auto faderArea = bounds.removeFromBottom(faderHeight);
         levelFader.setBounds(faderArea);
-
-        // Small gap
         bounds.removeFromBottom(3);
 
-        // Position bar: remaining height
         positionBar.setBounds(bounds);
     }
 

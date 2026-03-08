@@ -47,7 +47,7 @@ public:
         auto setupFilterSlider = [this](juce::Slider& s, const juce::String& suffix)
         {
             s.setSliderStyle(juce::Slider::LinearBar);
-            s.setTextBoxStyle(juce::Slider::TextBoxRight, false, 55, 18);
+            s.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
             s.setTextValueSuffix(" " + suffix);
             addAndMakeVisible(s);
         };

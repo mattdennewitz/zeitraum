@@ -13,7 +13,7 @@ public:
                                    const juce::String& suffix)
         {
             s.setSliderStyle(juce::Slider::LinearBar);
-            s.setTextBoxStyle(juce::Slider::TextBoxRight, false, 60, 20);
+            s.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
             s.setTextValueSuffix(" " + suffix);
             addAndMakeVisible(s);
 

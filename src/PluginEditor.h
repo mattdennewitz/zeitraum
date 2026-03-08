@@ -23,6 +23,11 @@ private:
     std::array<std::unique_ptr<TapColumn>, 8> tapColumns;
     FeedbackMatrixEditor feedbackMatrix;
 
+    // Section labels
+    juce::Label delayTimeLabel { {}, "Delay Time" };
+    juce::Label levelLabel { {}, "Level" };
+    juce::Label feedbackLabel { {}, "Feedback" };
+
     // Tap preset controls
     juce::ComboBox presetSelector;
     juce::TextButton savePresetButton { "Save" };
