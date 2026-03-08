@@ -13,10 +13,10 @@ Build a JUCE audio plugin that recreates the shared serial delay line architectu
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Project Scaffolding** - Compiling pass-through plugin with build automation and AU validation
-- [ ] **Phase 2: Core Delay Engine** - Functional stereo 8-tap delay with per-tap controls, character filtering, and smooth modulation
-- [ ] **Phase 3: Feedback Matrix** - Full feedback routing matrix with preset mixes and stability safeguards
+- [x] **Phase 2: Core Delay Engine** - Functional stereo 8-tap delay with per-tap controls, character filtering, and smooth modulation
+- [x] **Phase 3: Feedback Matrix** - Full feedback routing matrix with preset mixes and stability safeguards
 - [x] **Phase 4: DAW Integration** - Automation, tempo sync, and session state persistence (completed 2026-03-07)
-- [ ] **Phase 5: GUI** - Clean/modern interface with tap position display and feedback matrix editor
+- [x] **Phase 5: GUI** - Clean/modern interface with tap position display and feedback matrix editor
 
 ## Phase Details
 
@@ -47,10 +47,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 02-01-PLAN.md -- OnePoleSmooth and CharacterProcessor DSP helpers with unit tests
-- [ ] 02-02-PLAN.md -- TapReader and DelayEngine DSP classes with unit tests
-- [ ] 02-03-PLAN.md -- Parameter layout, processor wiring, and integration tests
-- [ ] 02-04-PLAN.md -- Tap presets, AU validation, and DAW listening checkpoint
+- [x] 02-01-PLAN.md -- OnePoleSmooth and CharacterProcessor DSP helpers with unit tests
+- [x] 02-02-PLAN.md -- TapReader and DelayEngine DSP classes with unit tests
+- [x] 02-03-PLAN.md -- Parameter layout, processor wiring, and integration tests
+- [x] 02-04-PLAN.md -- Tap presets, AU validation, and DAW listening checkpoint
 
 ### Phase 3: Feedback Matrix
 **Goal**: Users can route any combination of tap outputs and preset mixes back into the delay input with independent gain, producing the complex evolving textures that define this plugin
@@ -64,10 +64,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 03-01-PLAN.md -- FeedbackFilter and FeedbackSaturator DSP classes with unit tests
-- [ ] 03-02-PLAN.md -- FeedbackMatrix DSP class with unit tests
-- [ ] 03-03-PLAN.md -- DelayEngine feedback integration and parameter wiring
-- [ ] 03-04-PLAN.md -- Output mix presets, AU validation, and DAW listening checkpoint
+- [x] 03-01-PLAN.md -- FeedbackFilter and FeedbackSaturator DSP classes with unit tests
+- [x] 03-02-PLAN.md -- FeedbackMatrix DSP class with unit tests
+- [x] 03-03-PLAN.md -- DelayEngine feedback integration and parameter wiring
+- [x] 03-04-PLAN.md -- Output mix presets, AU validation, and DAW listening checkpoint
 
 ### Phase 4: DAW Integration
 **Goal**: Plugin behaves as a first-class DAW citizen with full automation, tempo sync, and reliable session recall
@@ -80,8 +80,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01-PLAN.md -- Parameter group refactor, tempo sync params and processBlock logic, unit tests
-- [ ] 04-02-PLAN.md -- State persistence version bump, backward compat tests, AU validation checkpoint
+- [x] 04-01-PLAN.md -- Parameter group refactor, tempo sync params and processBlock logic, unit tests
+- [x] 04-02-PLAN.md -- State persistence version bump, backward compat tests, AU validation checkpoint
 
 ### Phase 5: GUI
 **Goal**: Users interact with a clean, modern interface that makes the 8-tap delay and feedback matrix intuitive to use
@@ -94,9 +94,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 05-01-PLAN.md -- LookAndFeel theme, editor shell with resizable layout, top bar global controls
-- [ ] 05-02-PLAN.md -- TapPositionBar, TapLevelFader, TapColumn components wired into left panel
-- [ ] 05-03-PLAN.md -- FeedbackMatrixEditor, filter controls, tap presets, AU validation checkpoint
+- [x] 05-01-PLAN.md -- LookAndFeel theme, editor shell with resizable layout, top bar global controls
+- [x] 05-02-PLAN.md -- TapPositionBar, TapLevelFader, TapColumn components wired into left panel
+- [x] 05-03-PLAN.md -- FeedbackMatrixEditor, filter controls, tap presets, AU validation checkpoint
 
 ## Progress
 
@@ -106,7 +106,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Project Scaffolding | 2/2 | Complete | 2026-03-05 |
-| 2. Core Delay Engine | 0/4 | Not started | - |
+| 2. Core Delay Engine | 4/4 | Complete | 2026-03-06 |
 | 3. Feedback Matrix | 4/4 | Complete | 2026-03-06 |
-| 4. DAW Integration | 2/2 | Complete    | 2026-03-07 |
-| 5. GUI | 0/3 | Not started | - |
+| 4. DAW Integration | 2/2 | Complete | 2026-03-07 |
+| 5. GUI | 3/3 | Complete | 2026-03-08 |

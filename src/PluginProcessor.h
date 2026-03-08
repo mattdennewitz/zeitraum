@@ -66,6 +66,8 @@ private:
 
     // Output mix preset selector
     std::atomic<float>* outputMixParam = nullptr;
+    juce::RangedAudioParameter* outputMixParamObj = nullptr;
+    juce::RangedAudioParameter* tapLevelParamObjs[8] = {};
 
     // Tempo sync parameters
     std::atomic<float>* tempoSyncParam = nullptr;

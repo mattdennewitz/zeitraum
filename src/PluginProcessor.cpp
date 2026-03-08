@@ -33,6 +33,9 @@ ZeitraumProcessor::ZeitraumProcessor()
     fbLPOnParam = apvts.getRawParameterValue("FB_LP_ON");
 
     outputMixParam = apvts.getRawParameterValue("OUTPUT_MIX");
+    outputMixParamObj = apvts.getParameter("OUTPUT_MIX");
+    for (int i = 0; i < 8; ++i)
+        tapLevelParamObjs[i] = apvts.getParameter("TAP" + juce::String(i + 1) + "_LEVEL");
 
     tempoSyncParam = apvts.getRawParameterValue("TEMPO_SYNC");
     noteDivParam = apvts.getRawParameterValue("NOTE_DIV");
@@ -245,15 +248,13 @@ void ZeitraumProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
 
         if (pattern) {
-            for (int i = 0; i < 8; ++i) {
-                if (auto* p = apvts.getParameter("TAP" + juce::String(i + 1) + "_LEVEL"))
-                    p->setValueNotifyingHost(p->convertTo0to1(pattern[i]));
-            }
+            for (int i = 0; i < 8; ++i)
+                tapLevelParamObjs[i]->setValueNotifyingHost(
+                    tapLevelParamObjs[i]->convertTo0to1(pattern[i]));
         }
 
         // Reset selector back to Manual
-        if (auto* p = apvts.getParameter("OUTPUT_MIX"))
-            p->setValueNotifyingHost(0.0f);
+        outputMixParamObj->setValueNotifyingHost(0.0f);
     }
 
     // Load parameter values atomically
