@@ -27,12 +27,14 @@ jobs:
 
       - name: Run tests
         run: |
-          build/release/ZeitraumTests -r junit -o /tmp/test-results.xml 2>/dev/null || true
-          if grep -q 'failures="0"' /tmp/test-results.xml 2>/dev/null; then
+          build/release/ZeitraumTests -r compact 2>/dev/null | tee /tmp/test-output.txt || true
+          if grep -q "Failed" /tmp/test-output.txt; then
+            echo "Tests failed"
+            exit 1
+          elif grep -q "passed" /tmp/test-output.txt; then
             echo "All tests passed"
           else
-            echo "Tests failed"
-            cat /tmp/test-results.xml
+            echo "Test runner produced no output"
             exit 1
           fi
 
