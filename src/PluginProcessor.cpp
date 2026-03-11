@@ -421,21 +421,34 @@ void ZeitraumProcessor::randomizeParameters()
         param->setValueNotifyingHost(rng.nextFloat());  // [0,1] range, no skew
     }
 
-    // --- Feedback gains: 12 sources, normalize sum <= 0.8 ---
-    float fbGains[12];
-    float fbSum = 0.0f;
+    // --- Feedback gains: activate 2-4 random sources out of 12, zero the rest ---
+    float fbGains[12] = {};
+    int activeCount = 2 + rng.nextInt(3);  // 2, 3, or 4 active sources
+
+    // Pick which sources are active
+    int activeIndices[12];
     for (int i = 0; i < 12; ++i)
+        activeIndices[i] = i;
+    // Fisher-Yates shuffle first activeCount elements
+    for (int i = 0; i < activeCount; ++i)
     {
-        fbGains[i] = rng.nextFloat();
-        fbSum += fbGains[i];
+        int j = i + rng.nextInt(12 - i);
+        std::swap(activeIndices[i], activeIndices[j]);
     }
 
-    // Scale to 0.78 to leave headroom for quantization rounding (step size 0.1%)
+    // Generate gains only for active sources, then normalize
+    float fbSum = 0.0f;
+    for (int i = 0; i < activeCount; ++i)
+    {
+        fbGains[activeIndices[i]] = rng.nextFloat();
+        fbSum += fbGains[activeIndices[i]];
+    }
+
     if (fbSum > 0.78f)
     {
         float scale = 0.78f / fbSum;
-        for (int i = 0; i < 12; ++i)
-            fbGains[i] *= scale;
+        for (int i = 0; i < activeCount; ++i)
+            fbGains[activeIndices[i]] *= scale;
     }
 
     // Set FB_TAP1..FB_TAP8
