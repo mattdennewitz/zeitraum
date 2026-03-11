@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: brew install cmake ninja
+
+      - name: Build Release
+        run: |
+          cmake -B build/release -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCOPY_PLUGIN_AFTER_BUILD=FALSE
+          cmake --build build/release
+
+      - name: Run tests
+        run: |
+          build/release/ZeitraumTests -r junit -o /tmp/test-results.xml 2>/dev/null || true
+          if grep -q 'failures="0"' /tmp/test-results.xml 2>/dev/null; then
+            echo "All tests passed"
+          else
+            echo "Tests failed"
+            cat /tmp/test-results.xml
+            exit 1
+          fi
+
+      - name: Package VST3
+        run: |
+          cd build/release/Zeitraum_artefacts/Release/VST3
+          zip -r "$GITHUB_WORKSPACE/Zeitraum-macOS-VST3.zip" Zeitraum.vst3
+
+      - name: Package AU
+        run: |
+          cd build/release/Zeitraum_artefacts/Release/AU
+          zip -r "$GITHUB_WORKSPACE/Zeitraum-macOS-AU.zip" Zeitraum.component
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-plugins
+          path: |
+            Zeitraum-macOS-VST3.zip
+            Zeitraum-macOS-AU.zip
+
+  release:
+    needs: build-macos
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version
+        id: version
+        run: |
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$TAG" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download artifacts
+        if: steps.version.outputs.skip == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-plugins
+
+      - name: Create or update release
+        if: steps.version.outputs.skip == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Zeitraum ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            Zeitraum-macOS-VST3.zip
+            Zeitraum-macOS-AU.zip
