@@ -5,7 +5,7 @@ milestone_name: Somewhat-Controlled Random Settings
 status: active
 last_updated: "2026-03-10"
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -18,14 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** The feedback routing matrix and per-tap control over a shared serial delay line -- creating complex, evolving delay textures
-**Current focus:** Defining requirements for v1.2
+**Current focus:** Phase 7 - Randomizer Engine
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-10 — Milestone v1.2 started
+Phase: 7 of 8 (Randomizer Engine)
+Plan: --
+Status: Ready to plan
+Last activity: 2026-03-10 -- Roadmap created for v1.2
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -56,6 +58,7 @@ Recent decisions affecting current work:
 
 - [v1.0]: Feedback tap sliders identified as non-functional during v1.0 wrap-up
 - [v1.1]: Used NormalisableRange for generic UI-parameter scaling instead of hardcoded multiplier
+- [v1.2]: Research confirms setValueNotifyingHost must be called on message thread, not audio thread
 
 ### Pending Todos
 
@@ -63,10 +66,11 @@ None.
 
 ### Blockers/Concerns
 
-None.
+- Check if APVTS constructor includes UndoManager* (needed for single-undo-transaction wrapping)
+- Verify DelayEngine behavior when randomizing TAP_POS with QUANTIZE enabled
 
 ## Session Continuity
 
 Last session: 2026-03-10
-Stopped at: Completed 06-01-PLAN.md
+Stopped at: Created v1.2 roadmap (2 phases)
 Resume file: None

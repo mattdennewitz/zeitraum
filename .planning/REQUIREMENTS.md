@@ -62,21 +62,21 @@ Requirements for v1.2 Somewhat-Controlled Random Settings.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | FB-01 | Phase 6 | Complete |
-| RAND-01 | — | Pending |
-| RAND-02 | — | Pending |
-| RAND-03 | — | Pending |
-| RAND-04 | — | Pending |
-| RAND-05 | — | Pending |
-| GUI-01 | — | Pending |
-| AUTO-01 | — | Pending |
-| AUTO-02 | — | Pending |
-| AUTO-03 | — | Pending |
+| RAND-01 | Phase 7 | Pending |
+| RAND-02 | Phase 7 | Pending |
+| RAND-03 | Phase 7 | Pending |
+| RAND-04 | Phase 7 | Pending |
+| RAND-05 | Phase 7 | Pending |
+| GUI-01 | Phase 7 | Pending |
+| AUTO-01 | Phase 8 | Pending |
+| AUTO-02 | Phase 8 | Pending |
+| AUTO-03 | Phase 8 | Pending |
 
 **Coverage:**
 - v1.2 requirements: 8 total
-- Mapped to phases: 0
-- Unmapped: 8 ⚠️
+- Mapped to phases: 8
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-10*
-*Last updated: 2026-03-10 after v1.2 requirements definition*
+*Last updated: 2026-03-10 after v1.2 roadmap creation*
