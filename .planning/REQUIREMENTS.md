@@ -3,9 +3,29 @@
 **Defined:** 2026-03-10
 **Core Value:** The feedback routing matrix and per-tap control over a shared serial delay line
 
-## v1.1 Requirements
+## v1.2 Requirements
 
-Requirements for v1.1 Feedback Fixes. Bug fix milestone.
+Requirements for v1.2 Somewhat-Controlled Random Settings.
+
+### Randomizer
+
+- [ ] **RAND-01**: Randomize button generates new random values for all sound-shaping parameters (tap positions, levels, feedback routing, filters, multiplier, wet/dry)
+- [ ] **RAND-02**: Randomized tap positions are sorted ascending (Tap 1 earliest in delay line)
+- [ ] **RAND-03**: Feedback gain sum is normalized to ~80% max to prevent transient instability
+- [ ] **RAND-04**: Wet/dry is clamped to [0.2, 0.9] range during randomization
+- [ ] **RAND-05**: Mode and trigger parameters (OUTPUT_MIX, TEMPO_SYNC, QUANTIZE, NOTE_DIV, RANDOMIZE) are excluded from randomization
+
+### GUI
+
+- [ ] **GUI-01**: Randomize button visible in plugin editor UI
+
+### Automation
+
+- [ ] **AUTO-01**: RANDOMIZE parameter is automatable in DAW automation lanes
+- [ ] **AUTO-02**: Trigger uses rising-edge detection to prevent continuous re-randomization when automation holds value high
+- [ ] **AUTO-03**: Session load does not trigger false randomization (prevTriggerState initialized from saved value)
+
+## v1.1 Requirements (Complete)
 
 ### Feedback Matrix
 
@@ -21,6 +41,8 @@ Requirements for v1.1 Feedback Fixes. Bug fix milestone.
 ### UX
 
 - **UX-01**: Per-tap mute/solo for quick auditioning
+- **UX-02**: Per-group lock toggles for randomizer (lock taps/levels/feedback/filters individually)
+- **UX-03**: Randomize amount slider (±N% deviation from current values)
 
 ### Format
 
@@ -31,18 +53,30 @@ Requirements for v1.1 Feedback Fixes. Bug fix milestone.
 | Feature | Reason |
 |---------|--------|
 | Full delay engine rewrite | This is a targeted fix, not a redesign |
+| Per-group lock toggles | Defer to future based on user feedback |
+| Seed-based deterministic randomization | Adds state-tracking complexity |
+| Randomize amount slider | Strong v2 candidate but not v1.2 |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | FB-01 | Phase 6 | Complete |
+| RAND-01 | — | Pending |
+| RAND-02 | — | Pending |
+| RAND-03 | — | Pending |
+| RAND-04 | — | Pending |
+| RAND-05 | — | Pending |
+| GUI-01 | — | Pending |
+| AUTO-01 | — | Pending |
+| AUTO-02 | — | Pending |
+| AUTO-03 | — | Pending |
 
 **Coverage:**
-- v1.1 requirements: 1 total
-- Mapped to phases: 1
-- Unmapped: 0
+- v1.2 requirements: 8 total
+- Mapped to phases: 0
+- Unmapped: 8 ⚠️
 
 ---
 *Requirements defined: 2026-03-10*
-*Last updated: 2026-03-10 after roadmap creation*
+*Last updated: 2026-03-10 after v1.2 requirements definition*
