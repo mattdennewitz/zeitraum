@@ -34,7 +34,7 @@ Full details: .planning/milestones/v1.0-ROADMAP.md
 
 ### v1.2 Somewhat-Controlled Random Settings
 
-- [ ] **Phase 7: Randomizer Engine** - Implement parameter randomization with safety constraints and GUI button
+- [ ] **Phase 7: Randomizer Engine** - Implement parameter randomization with safety constraints and GUI button (2 plans)
 - [ ] **Phase 8: Automation Trigger** - Automatable RANDOMIZE parameter with edge detection for DAW-driven randomization
 
 ## Phase Details
@@ -49,7 +49,10 @@ Full details: .planning/milestones/v1.0-ROADMAP.md
   3. After randomization, the plugin does not produce runaway feedback oscillation or self-destruct -- feedback gains are bounded and wet/dry stays in a usable range
   4. Mode and trigger parameters (OUTPUT_MIX, TEMPO_SYNC, QUANTIZE, NOTE_DIV, RANDOMIZE) remain unchanged after randomization
   5. All randomized parameter values are reflected in the GUI controls (sliders, bars, cells update automatically) and persist through save/restore
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 07-01-PLAN.md -- Implement randomizeParameters() method with constraints + tests
+- [ ] 07-02-PLAN.md -- Add Randomize button to TopBar GUI + DAW verification
 
 ### Phase 8: Automation Trigger
 **Goal**: Users can trigger randomization from DAW automation lanes, enabling evolving delay textures during playback
@@ -74,5 +77,5 @@ Phase 7 -> Phase 8
 | 4. DAW Integration | v1.0 | 2/2 | Complete | 2026-03-07 |
 | 5. GUI | v1.0 | 3/3 | Complete | 2026-03-08 |
 | 6. Feedback Tap Gain Fix | v1.1 | 1/1 | Complete | 2026-03-10 |
-| 7. Randomizer Engine | v1.2 | 0/? | Not started | - |
+| 7. Randomizer Engine | v1.2 | 0/2 | Not started | - |
 | 8. Automation Trigger | v1.2 | 0/? | Not started | - |
