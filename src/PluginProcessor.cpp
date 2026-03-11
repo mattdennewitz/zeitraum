@@ -399,7 +399,102 @@ juce::StringArray ZeitraumProcessor::getTapPresetNames() const
 
 void ZeitraumProcessor::randomizeParameters()
 {
-    // TODO: implement
+    juce::Random rng;
+
+    // --- Tap positions: generate 8 random floats, sort ascending ---
+    float positions[8];
+    for (int i = 0; i < 8; ++i)
+        positions[i] = rng.nextFloat();
+
+    std::sort(std::begin(positions), std::end(positions));
+
+    for (int i = 0; i < 8; ++i)
+    {
+        auto* param = apvts.getParameter("TAP" + juce::String(i + 1) + "_POS");
+        param->setValueNotifyingHost(positions[i]);  // [0,1] range, no skew
+    }
+
+    // --- Tap levels: random in [0, 1] ---
+    for (int i = 0; i < 8; ++i)
+    {
+        auto* param = apvts.getParameter("TAP" + juce::String(i + 1) + "_LEVEL");
+        param->setValueNotifyingHost(rng.nextFloat());  // [0,1] range, no skew
+    }
+
+    // --- Feedback gains: 12 sources, normalize sum <= 0.8 ---
+    float fbGains[12];
+    float fbSum = 0.0f;
+    for (int i = 0; i < 12; ++i)
+    {
+        fbGains[i] = rng.nextFloat();
+        fbSum += fbGains[i];
+    }
+
+    // Scale to 0.78 to leave headroom for quantization rounding (step size 0.1%)
+    if (fbSum > 0.78f)
+    {
+        float scale = 0.78f / fbSum;
+        for (int i = 0; i < 12; ++i)
+            fbGains[i] *= scale;
+    }
+
+    // Set FB_TAP1..FB_TAP8
+    for (int i = 0; i < 8; ++i)
+    {
+        auto* param = apvts.getParameter("FB_TAP" + juce::String(i + 1));
+        float actualValue = fbGains[i] * 100.0f;  // convert to [0, 100] range
+        param->setValueNotifyingHost(param->convertTo0to1(actualValue));
+    }
+
+    // Set FB_ODD, FB_EVEN, FB_RISING, FB_FALLING
+    const juce::String mixNames[] = {"FB_ODD", "FB_EVEN", "FB_RISING", "FB_FALLING"};
+    for (int i = 0; i < 4; ++i)
+    {
+        auto* param = apvts.getParameter(mixNames[i]);
+        float actualValue = fbGains[8 + i] * 100.0f;
+        param->setValueNotifyingHost(param->convertTo0to1(actualValue));
+    }
+
+    // --- Feedback filters: ensure HP < LP ---
+    float hpFreq = 20.0f + rng.nextFloat() * (2000.0f - 20.0f);
+    float lpFreq = 200.0f + rng.nextFloat() * (20000.0f - 200.0f);
+
+    if (hpFreq >= lpFreq)
+        std::swap(hpFreq, lpFreq);
+
+    auto* hpParam = apvts.getParameter("FB_HP_FREQ");
+    hpParam->setValueNotifyingHost(hpParam->convertTo0to1(hpFreq));
+
+    auto* lpParam = apvts.getParameter("FB_LP_FREQ");
+    lpParam->setValueNotifyingHost(lpParam->convertTo0to1(lpFreq));
+
+    // FB_HP_ON and FB_LP_ON: random bool
+    auto* hpOnParam = apvts.getParameter("FB_HP_ON");
+    hpOnParam->setValueNotifyingHost(rng.nextFloat() > 0.5f ? 1.0f : 0.0f);
+
+    auto* lpOnParam = apvts.getParameter("FB_LP_ON");
+    lpOnParam->setValueNotifyingHost(rng.nextFloat() > 0.5f ? 1.0f : 0.0f);
+
+    // --- Global sound-shaping parameters ---
+    // BASE_DELAY: random in [10, 150], skewed range
+    float baseDelay = 10.0f + rng.nextFloat() * (150.0f - 10.0f);
+    auto* bdParam = apvts.getParameter("BASE_DELAY");
+    bdParam->setValueNotifyingHost(bdParam->convertTo0to1(baseDelay));
+
+    // MULTIPLIER: random in [1, 33], skewed range
+    float mult = 1.0f + rng.nextFloat() * (33.0f - 1.0f);
+    auto* multParam = apvts.getParameter("MULTIPLIER");
+    multParam->setValueNotifyingHost(multParam->convertTo0to1(mult));
+
+    // MIX: random in [20, 90], clamped range
+    float mix = 20.0f + rng.nextFloat() * (90.0f - 20.0f);
+    auto* mixP = apvts.getParameter("MIX");
+    mixP->setValueNotifyingHost(mixP->convertTo0to1(mix));
+
+    // CHARACTER: random in [0, 100]
+    float character = rng.nextFloat() * 100.0f;
+    auto* charParam = apvts.getParameter("CHARACTER");
+    charParam->setValueNotifyingHost(charParam->convertTo0to1(character));
 }
 
 void ZeitraumProcessor::getStateInformation(juce::MemoryBlock& destData)
