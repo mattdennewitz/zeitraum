@@ -868,6 +868,89 @@ TEST_CASE("setStateInformation rejects wrong XML tag", "[state][robustness]") {
                  Catch::Matchers::WithinAbs(static_cast<double>(defaultDelay), 0.5));
 }
 
+// ============================================================
+// Phase 6: Feedback tap gain value scaling tests
+// ============================================================
+
+TEST_CASE("FB_TAP parameter set to 75 reads back as 75", "[parameters][feedback-gain]") {
+    ZeitraumProcessor proc;
+
+    auto* param = proc.apvts.getParameter("FB_TAP1");
+    REQUIRE(param != nullptr);
+
+    // Set FB_TAP1 to 75.0 via the proper host API
+    param->setValueNotifyingHost(param->convertTo0to1(75.0f));
+
+    // Read back the raw (denormalized) value -- should be ~75.0
+    float rawVal = proc.apvts.getRawParameterValue("FB_TAP1")->load();
+    REQUIRE_THAT(static_cast<double>(rawVal), Catch::Matchers::WithinAbs(75.0, 1.0));
+}
+
+TEST_CASE("Feedback at 100% produces echoes through DSP pipeline", "[processor][feedback-gain]") {
+    ZeitraumProcessor proc;
+    proc.prepareToPlay(44100.0, 512);
+
+    // Set MIX to 100% wet
+    if (auto* param = proc.apvts.getParameter("MIX"))
+        param->setValueNotifyingHost(param->convertTo0to1(100.0f));
+
+    // Set CHARACTER to 0% for clean signal
+    if (auto* param = proc.apvts.getParameter("CHARACTER"))
+        param->setValueNotifyingHost(param->convertTo0to1(0.0f));
+
+    // Enable only tap 1 at full level, position 1.0 (= BASE_DELAY)
+    if (auto* param = proc.apvts.getParameter("TAP1_POS"))
+        param->setValueNotifyingHost(param->convertTo0to1(1.0f));
+    if (auto* param = proc.apvts.getParameter("TAP1_LEVEL"))
+        param->setValueNotifyingHost(param->convertTo0to1(1.0f));
+
+    // Mute all other taps
+    for (int i = 2; i <= 8; ++i)
+        if (auto* param = proc.apvts.getParameter("TAP" + juce::String(i) + "_LEVEL"))
+            param->setValueNotifyingHost(0.0f);
+
+    // Set FB_TAP1 to 100% -- this is the parameter under test
+    if (auto* param = proc.apvts.getParameter("FB_TAP1"))
+        param->setValueNotifyingHost(param->convertTo0to1(100.0f));
+
+    // Verify the raw parameter value is actually 100 (not 1.0)
+    float fbRaw = proc.apvts.getRawParameterValue("FB_TAP1")->load();
+    REQUIRE_THAT(static_cast<double>(fbRaw), Catch::Matchers::WithinAbs(100.0, 1.0));
+
+    // Use BASE_DELAY=80ms (default), tap1 at pos 1.0 -> 80ms -> ~3528 samples
+    // Leave BASE_DELAY at default 80ms for stability
+
+    juce::MidiBuffer midi;
+
+    // Feed a loud impulse
+    juce::AudioBuffer<float> buffer(2, 512);
+    buffer.clear();
+    buffer.setSample(0, 0, 0.9f);
+    buffer.setSample(1, 0, 0.9f);
+    proc.processBlock(buffer, midi);
+
+    // Process enough blocks for multiple feedback repeats
+    // 80ms * 44100 = 3528 samples per echo, need ~30 blocks of 512 per echo
+    // Process 100 blocks (~1.16 seconds) to allow several echoes
+    int peakBlocks = 0;  // count blocks that contain significant signal
+    for (int block = 0; block < 100; ++block)
+    {
+        juce::AudioBuffer<float> nextBuffer(2, 512);
+        nextBuffer.clear();
+        proc.processBlock(nextBuffer, midi);
+
+        float blockPeak = nextBuffer.getMagnitude(0, 0, 512);
+        if (blockPeak > 0.01f)
+            peakBlocks++;
+    }
+
+    // With feedback at 100%, signal should persist across many blocks
+    // Without feedback, we'd only see output in ~7 blocks (one pass through taps)
+    // With feedback, the signal recirculates, so we should see it in many more blocks
+    INFO("peakBlocks=" << peakBlocks);
+    REQUIRE(peakBlocks > 15);
+}
+
 TEST_CASE("State round-trip preserves tempo sync params", "[state][tempo-sync]") {
     juce::MemoryBlock savedState;
     {
