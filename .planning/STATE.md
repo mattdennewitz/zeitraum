@@ -1,31 +1,31 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: MVP
-status: complete
-last_updated: "2026-03-08T18:10:00.000Z"
+milestone: v1.1
+milestone_name: Feedback Fixes
+status: active
+last_updated: "2026-03-10T00:00:00.000Z"
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 15
-  completed_plans: 15
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-08)
+See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** The feedback routing matrix and per-tap control over a shared serial delay line -- creating complex, evolving delay textures
-**Current focus:** v1.0 milestone complete — planning next milestone
+**Current focus:** v1.1 Feedback Fixes — fix non-functional feedback tap gain sliders
 
 ## Current Position
 
-Milestone: v1.0 MVP — SHIPPED 2026-03-08
-Status: Complete (all 5 phases, 15 plans)
-
-Progress: [███████████████] 100%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-10 — Milestone v1.1 started
 
 ## Performance Metrics
 
