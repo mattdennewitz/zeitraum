@@ -397,6 +397,11 @@ juce::StringArray ZeitraumProcessor::getTapPresetNames() const
     return names;
 }
 
+void ZeitraumProcessor::randomizeParameters()
+{
+    // TODO: implement
+}
+
 void ZeitraumProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();

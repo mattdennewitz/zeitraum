@@ -39,6 +39,8 @@ public:
     void recallTapPreset(const juce::String& name);
     juce::StringArray getTapPresetNames() const;
 
+    void randomizeParameters();
+
     juce::AudioProcessorValueTreeState apvts;
 
 private:
