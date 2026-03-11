@@ -3,7 +3,7 @@
 ZeitraumEditor::ZeitraumEditor(ZeitraumProcessor& p)
     : AudioProcessorEditor(&p),
       processorRef(p),
-      topBar(p.apvts),
+      topBar(p.apvts, [this]() { processorRef.randomizeParameters(); }),
       feedbackMatrix(p.apvts)
 {
     setLookAndFeel(&lookAndFeel);

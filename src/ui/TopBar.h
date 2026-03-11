@@ -1,11 +1,12 @@
 #pragma once
+#include <functional>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
 class TopBar : public juce::Component
 {
 public:
-    explicit TopBar(juce::AudioProcessorValueTreeState& apvts)
+    TopBar(juce::AudioProcessorValueTreeState& apvts, std::function<void()> onRandomize = nullptr)
     {
         // --- Sliders ---
         auto setupSlider = [this](juce::Slider& s, juce::Label& l,
@@ -42,6 +43,11 @@ public:
 
         outputMixCombo.addItemList({"Manual", "Odd", "Even", "Rising", "Falling"}, 1);
         addAndMakeVisible(outputMixCombo);
+
+        // --- Randomize button ---
+        randomizeButton.setButtonText("Randomize");
+        randomizeButton.onClick = std::move(onRandomize);
+        addAndMakeVisible(randomizeButton);
 
         // --- Create attachments (AFTER all items are populated) ---
         baseDelayAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
@@ -89,6 +95,9 @@ public:
         fb.items.add(juce::FlexItem(noteDivCombo).withWidth(80.0f).withHeight(itemHeight).withMargin(juce::FlexItem::Margin(0, margin, 0, margin)));
         fb.items.add(juce::FlexItem(outputMixCombo).withWidth(90.0f).withHeight(itemHeight).withMargin(juce::FlexItem::Margin(0, margin, 0, margin)));
 
+        // Randomize button
+        fb.items.add(juce::FlexItem(randomizeButton).withWidth(85.0f).withHeight(itemHeight).withMargin(juce::FlexItem::Margin(0, 0, 0, margin)));
+
         fb.performLayout(getLocalBounds().reduced(6, 4));
     }
 
@@ -112,6 +121,9 @@ private:
     // ComboBoxes
     juce::ComboBox noteDivCombo;
     juce::ComboBox outputMixCombo;
+
+    // Randomize button
+    juce::TextButton randomizeButton;
 
     // Attachments (must be destroyed before the components they reference)
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> baseDelayAttachment;
