@@ -7,6 +7,7 @@ class FeedbackGainCell : public juce::Component
 public:
     FeedbackGainCell(juce::RangedAudioParameter& gainParam, const juce::String& label)
         : sourceLabel(label),
+          paramRange(gainParam.getNormalisableRange()),
           attachment(gainParam,
                      [this](float newValue) { setValue(newValue); },
                      nullptr)
@@ -65,7 +66,7 @@ public:
         repaint();
 
         ignoreCallbacks = true;
-        attachment.setValueAsPartOfGesture(newValue);
+        attachment.setValueAsPartOfGesture(paramRange.convertFrom0to1(newValue));
         ignoreCallbacks = false;
     }
 
@@ -95,11 +96,11 @@ public:
         label->onTextChange = [this, label]()
         {
             float typedPct = label->getText().getFloatValue();
-            float newVal = juce::jlimit(0.0f, 1.0f, typedPct / 100.0f);
-            currentValue = newVal;
+            float denormVal = juce::jlimit(paramRange.start, paramRange.end, typedPct);
+            currentValue = paramRange.convertTo0to1(denormVal);
             repaint();
             ignoreCallbacks = true;
-            attachment.setValueAsCompleteGesture(newVal);
+            attachment.setValueAsCompleteGesture(denormVal);
             ignoreCallbacks = false;
         };
 
@@ -121,11 +122,12 @@ private:
     void setValue(float newValue)
     {
         if (ignoreCallbacks) return;
-        currentValue = newValue;
+        currentValue = paramRange.convertTo0to1(newValue);
         repaint();
     }
 
     juce::String sourceLabel;
+    juce::NormalisableRange<float> paramRange;
     juce::ParameterAttachment attachment;
     float currentValue = 0.0f;
     bool dragging = false;
