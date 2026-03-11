@@ -16,7 +16,7 @@ The feedback routing matrix and per-tap control over a shared serial delay line 
 - ✓ Free-tap positioning with equal-spacing as default preset — v1.0
 - ✓ Per-tap level controls and individual tap outputs — v1.0
 - ✓ Preset mixes: odd taps, even taps, rising-level, falling-level — v1.0
-- ⚠️ Feedback routing matrix (any tap or preset mix back to input with independent gain) — v1.0 — tap sliders non-functional, fix in v1.1
+- ✓ Feedback routing matrix (any tap or preset mix back to input with independent gain) — v1.0, fixed v1.1
 - ✓ Feedback saturation/limiting prevents runaway oscillation — v1.0
 - ✓ Feedback HP+LP filters for tonal shaping — v1.0
 - ✓ Interactive visual display of feedback routing matrix — v1.0
@@ -39,17 +39,20 @@ The feedback routing matrix and per-tap control over a shared serial delay line 
 
 ### Active
 
+- [ ] Preset randomizer with automatable trigger parameter
 - [ ] Doppler/tape artifacts when delay time is swept (pitch-shifting modulation character)
 - [ ] Cross-channel feedback routing (L taps feed R input and vice versa)
 - [ ] Per-tap mute/solo for quick auditioning
 - [ ] CLAP format support via clap-juce-extensions
 
-## Current Milestone: v1.1 Feedback Fixes
+## Current Milestone: v1.2 Somewhat-Controlled Random Settings
 
-**Goal:** Fix non-functional feedback tap gain sliders (FB_TAP1_LVL–FB_TAP8_LVL) in the matrix editor.
+**Goal:** Add a preset randomizer that generates fully random parameter values across all groups, triggered by a GUI button and an automatable parameter.
 
 **Target features:**
-- Feedback tap gain sliders actually affect the audio signal
+- Randomize all parameters: tap positions, tap levels, feedback routing (sources + gains), feedback filters, delay multiplier, wet/dry
+- GUI randomize button
+- Automatable trigger parameter for DAW-driven randomization
 
 ### Out of Scope
 
@@ -99,4 +102,4 @@ Manufacturer: "Die stille Erde" (DsEr/ZtRm).
 | ParameterAttachment over SliderAttachment for custom components | Full gesture control (begin/set/end) needed for drag interaction | ✓ Good — proper automation recording |
 
 ---
-*Last updated: 2026-03-10 after v1.1 milestone started*
+*Last updated: 2026-03-10 after v1.2 milestone started*

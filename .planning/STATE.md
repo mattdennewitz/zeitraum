@@ -1,14 +1,14 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Feedback Fixes
-status: unknown
-last_updated: "2026-03-11T01:19:03.684Z"
+milestone: v1.2
+milestone_name: Somewhat-Controlled Random Settings
+status: active
+last_updated: "2026-03-10"
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
@@ -18,16 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** The feedback routing matrix and per-tap control over a shared serial delay line -- creating complex, evolving delay textures
-**Current focus:** Phase 6 - Feedback Tap Gain Fix
+**Current focus:** Defining requirements for v1.2
 
 ## Current Position
 
-Phase: 6 of 6 (Feedback Tap Gain Fix)
-Plan: 1 of 1 in current phase (complete)
-Status: Phase complete
-Last activity: 2026-03-10 -- Completed 06-01: Feedback Tap Gain Fix
-
-Progress: [####################] 100% v1.0 | [##########] 100% v1.1
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-10 — Milestone v1.2 started
 
 ## Performance Metrics
 
