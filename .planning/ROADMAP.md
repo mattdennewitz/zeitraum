@@ -26,7 +26,7 @@ Full details: .planning/milestones/v1.0-ROADMAP.md
 
 ### v1.1 Feedback Fixes
 
-- [ ] **Phase 6: Feedback Tap Gain Fix** - Wire FB_TAP1_LVL-FB_TAP8_LVL parameters to the audio engine so tap gain sliders affect the feedback signal
+- [ ] **Phase 6: Feedback Tap Gain Fix** - Fix FeedbackGainCell value scaling so tap gain sliders send correct 0-100 values to parameters
 
 ## Phase Details
 
@@ -38,7 +38,9 @@ Full details: .planning/milestones/v1.0-ROADMAP.md
   1. Moving a feedback tap gain slider (FB_TAP1_LVL through FB_TAP8_LVL) in the matrix editor audibly changes that tap's contribution to the feedback signal
   2. Setting a feedback tap gain slider to zero silences that tap's feedback contribution while other taps with non-zero gain continue feeding back
   3. Feedback tap gain values persist correctly through save/restore cycles (DAW session recall)
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 06-01-PLAN.md -- Fix FeedbackGainCell value scaling and add regression test
 
 ## Progress
 
@@ -52,4 +54,4 @@ Phase 6
 | 3. Feedback Matrix | v1.0 | 4/4 | Complete | 2026-03-06 |
 | 4. DAW Integration | v1.0 | 2/2 | Complete | 2026-03-07 |
 | 5. GUI | v1.0 | 3/3 | Complete | 2026-03-08 |
-| 6. Feedback Tap Gain Fix | v1.1 | 0/TBD | Not started | - |
+| 6. Feedback Tap Gain Fix | v1.1 | 0/1 | In progress | - |
