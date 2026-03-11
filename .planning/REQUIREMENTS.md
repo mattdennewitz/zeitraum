@@ -9,7 +9,7 @@ Requirements for v1.1 Feedback Fixes. Bug fix milestone.
 
 ### Feedback Matrix
 
-- [ ] **FB-01**: Feedback tap gain sliders (FB_TAP1_LVL-FB_TAP8_LVL) control the level of each tap's contribution to the feedback signal
+- [x] **FB-01**: Feedback tap gain sliders (FB_TAP1_LVL-FB_TAP8_LVL) control the level of each tap's contribution to the feedback signal
 
 ## Future Requirements
 
@@ -36,7 +36,7 @@ Requirements for v1.1 Feedback Fixes. Bug fix milestone.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FB-01 | Phase 6 | Pending |
+| FB-01 | Phase 6 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 1 total
