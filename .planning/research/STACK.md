@@ -1,212 +1,291 @@
-# Technology Stack
+# Stack Research
 
-**Project:** Multi-Tap Delay
-**Researched:** 2026-03-05
+**Domain:** JUCE audio plugin — preset randomizer feature
+**Researched:** 2026-03-10
+**Confidence:** HIGH (all findings verified against JUCE 8.0.12 source in `lib/JUCE`)
 
-## Recommended Stack
+---
 
-### Core Framework
+## Scope
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| JUCE | 8.0.12 | Audio plugin framework | Industry standard for cross-format audio plugins. Already proven in the three-sisters reference project. Provides audio processing, GUI, plugin format wrappers, and DSP primitives all in one framework. Use as git submodule under `lib/JUCE`. |
-| C++ | C++17 | Language standard | JUCE 8 requires C++17 minimum. C++20 is possible but adds no critical features for this project and may cause issues with some JUCE internals. Stick with 17 for maximum compatibility with the proven three-sisters pattern. |
-| CMake | >= 3.22 | Build system | JUCE 8's CMake API requires 3.22+. Use `juce_add_plugin()` for all format targets. This is the canonical JUCE build approach since JUCE 6. |
-| Ninja | latest | Build backend | Fast incremental builds. Used in three-sisters Makefile pattern: `cmake -B build -G Ninja`. |
+This is a **subsequent milestone** stack document. The existing stack (JUCE 8.0.12, C++17,
+CMake+Ninja, Catch2 v3.7.1, APVTS) is validated and unchanged. This document covers only the
+**new capabilities required for the preset randomizer feature**:
 
-### Plugin Formats
+- Random number generation
+- Automatable trigger parameter
+- Batch parameter update across all 38 parameters
+- GUI randomize button
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| VST3 | 3.8.0 (bundled) | DAW plugin format | Universal DAW support. VST3 SDK is bundled with JUCE 8 under MIT license -- no external SDK needed. |
-| AU (AudioUnit) | System | macOS DAW format | Required for Logic Pro, GarageBand. Set `AU_MAIN_TYPE kAudioUnitType_Effect`. Validate with `auval`. |
-| CLAP | via clap-juce-extensions | Modern plugin format | Growing adoption (Bitwig, Reaper, FL Studio). NOT natively supported by JUCE -- requires `free-audio/clap-juce-extensions` as a FetchContent dependency. See integration notes below. |
+No new dependencies are required. Everything needed is already in JUCE.
 
-### DSP Components (all from juce::dsp)
+---
 
-| Component | Module | Purpose | Why |
-|-----------|--------|---------|-----|
-| `juce::dsp::DelayLine` | juce_dsp | Shared delay buffer | Built-in delay line with multi-tap support via `popSample(channel, delayInSamples, updateReadPointer=false)`. The `updateReadPointer=false` parameter enables reading multiple taps from a single delay line -- this is exactly the architecture needed. Use `Lagrange3rd` interpolation for smooth delay modulation without excessive filtering. |
-| `juce::SmoothedValue` | juce_audio_basics | Parameter smoothing | Prevents zipper noise on parameter changes. Use `SmoothedValue<float, ValueSmoothingTypes::Multiplicative>` for gain parameters, `SmoothedValue<float, ValueSmoothingTypes::Linear>` for delay time. Reset smoothing ramp on `prepareToPlay`. |
-| `juce::dsp::FirstOrderTPTFilter` | juce_dsp | HF roll-off in delay path | Topology-preserving transform (TPT) filter for the character approximation. Place a lowpass instance in the feedback path to simulate analog bandwidth limiting. Cheap, stable, musically appropriate. |
-| `juce::dsp::StateVariableTPTFilter` | juce_dsp | Bandwidth limiting | 2nd-order SVF for more aggressive filtering if needed. Provides simultaneous lowpass/bandpass/highpass outputs. Use for input/output tone shaping. |
-| `juce::dsp::ProcessorChain` | juce_dsp | DSP graph assembly | Template-based processor chain for composing filter stages. Useful for the per-tap processing chain. |
-| `juce::AudioBuffer` | juce_audio_basics | Audio buffer management | Standard JUCE buffer type. Use for intermediate mixing of tap outputs and feedback routing. |
+## New Capabilities Required
 
-### Plugin Architecture (from juce_audio_processors)
+### Random Number Generation
 
-| Component | Purpose | Why |
-|-----------|---------|-----|
-| `juce::AudioProcessorValueTreeState` (APVTS) | Parameter management | Connects parameters to GUI, handles DAW automation, provides thread-safe parameter access. Use `ParameterLayout` to declare all parameters. This is the standard JUCE pattern for automatable parameters. |
-| `juce::AudioProcessor` | Plugin processor base class | Override `processBlock()`, `prepareToPlay()`, `releaseResources()`. Keep DSP in a separate engine class for testability. |
-| `juce::AudioProcessorEditor` | Plugin GUI base class | Override for custom GUI. Use `juce::Component` hierarchy for the interface. |
+| Technology | Source | Purpose | Why Recommended |
+|------------|--------|---------|-----------------|
+| `juce::Random` | `juce_core` (already linked) | Generate random float values for each parameter | Verified in `lib/JUCE/modules/juce_core/maths/juce_Random.h`. Thread-safe global accessor available. No new dependency. |
 
-### Testing
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| Catch2 | v3.7.1 | Unit testing | Modern C++ test framework. Already used in three-sisters. Fetch via CMake `FetchContent`. Test DSP engine independently of plugin wrapper. |
-| CTest | (CMake built-in) | Test runner | Standard CMake test integration. `make test` runs all Catch2 tests. |
-
-### Build Automation
-
-| Technology | Purpose | Why |
-|------------|---------|-----|
-| Makefile | Developer workflow | Wraps CMake/Ninja commands. Proven pattern from three-sisters: `make`, `make release`, `make clean`, `make validate`, `make test`. Handles submodule init, tool checking (auto-install via Homebrew), AU validation. |
-
-## CLAP Integration Notes
-
-JUCE does not natively support CLAP. The `clap-juce-extensions` project by the free-audio group adds CLAP as an additional format target. Integration pattern:
-
-```cmake
-# In CMakeLists.txt, after juce_add_plugin():
-include(FetchContent)
-FetchContent_Declare(
-    clap-juce-extensions
-    GIT_REPOSITORY https://github.com/free-audio/clap-juce-extensions.git
-    GIT_TAG main  # Pin to a specific commit/tag for reproducibility
-)
-FetchContent_MakeAvailable(clap-juce-extensions)
-
-clap_juce_extensions_plugin(
-    TARGET MultiTapDelay
-    CLAP_ID "com.die-stille-erde.multi-tap-delay"
-    CLAP_FEATURES audio-effect delay multi-effects
-)
-```
-
-**Confidence: MEDIUM** -- This integration pattern is well-established in the JUCE community but I could not verify the exact current API against official docs due to tool limitations. The `clap-juce-extensions` repo should be checked for any breaking changes before integration. Consider deferring CLAP to a later phase if it blocks initial development.
-
-## Delay Line Architecture Decision
-
-**Use `juce::dsp::DelayLine` directly, do NOT write a custom delay buffer.**
-
-The JUCE `DelayLine` class supports the exact multi-tap architecture needed:
+**API surface needed:**
 
 ```cpp
-// Single shared delay line per channel
-juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd> delayLine;
+// Default constructor calls setSeedRandomly() internally — use this
+juce::Random rng;
 
-// Write once per sample
-delayLine.pushSample(channel, inputSample);
+// Returns float in [0.0, 1.0)
+float rng.nextFloat();
 
-// Read at 8 different tap positions (multi-tap)
-for (int tap = 0; tap < 8; ++tap) {
-    float tapOutput = delayLine.popSample(channel, tapDelaySamples[tap], false);  // false = don't advance read pointer
-    // Mix tap output with per-tap gain...
-}
-// Advance read pointer once after all taps
-delayLine.popSample(channel, 0.0f, true);  // true = advance read pointer
+// Returns bool
+bool rng.nextBool();
+
+// Returns int in [0, maxValue)
+int rng.nextInt(int maxValue);
+
+// Per-call reseeding if reproducibility matters later
+rng.setSeed(juce::Time::currentTimeMillis());
 ```
 
-**Why Lagrange3rd interpolation:** Linear interpolation introduces audible low-pass filtering when modulating delay time. Lagrange3rd provides much better frequency response with minimal extra CPU cost (4 multiplies vs 1). Thiran is unsuitable because it is stateful and breaks when delay time is modulated rapidly -- which is a core feature (doppler/tape artifacts).
+`juce::Random::getSystemRandom()` returns a per-thread singleton — acceptable for a GUI
+callback but not useful here since the randomizer runs on the message thread from a button click.
+Instantiate one `juce::Random` as a member of `ZeitraumProcessor` (or the editor) for clarity.
 
-## Parameter Smoothing Strategy
+**Confidence: HIGH** — Read directly from `juce_Random.h` in the project's own JUCE submodule.
 
-| Parameter Type | Smoothing Method | Ramp Time | Why |
-|----------------|-----------------|-----------|-----|
-| Tap delay times | `SmoothedValue<float, Linear>` | 20-50ms | Smooth transitions create doppler pitch shift (desired tape effect). Do NOT snap -- gradual crossfade creates the analog character. |
-| Tap levels / gains | `SmoothedValue<float, Multiplicative>` | 10-20ms | Multiplicative smoothing is perceptually linear for gain. Prevents clicks on gain changes. |
-| Feedback matrix gains | `SmoothedValue<float, Multiplicative>` | 10-20ms | Same as tap levels. Critical to smooth these to avoid feedback instability during transitions. |
-| Master mix (dry/wet) | `juce::dsp::DryWetMixer` | Built-in | JUCE's DryWetMixer handles crossfading with its own internal smoothing. |
+---
+
+### Automatable Trigger Parameter
+
+The randomizer needs a DAW-automatable parameter so users can automate when randomization
+fires (e.g., trigger it every 4 bars). The `OUTPUT_MIX` apply-and-reset pattern already in
+`PluginProcessor.cpp` is the exact model to follow.
+
+| Mechanism | Where | Purpose |
+|-----------|-------|---------|
+| `AudioParameterBool` (momentary) | APVTS layout | Automatable trigger that resets to false after firing |
+| `RangedAudioParameter::setValueNotifyingHost` | processBlock | Apply random values to all params, then reset trigger |
+| `beginChangeGesture` / `endChangeGesture` | GUI button handler | Wrap the button's programmatic change for proper automation recording |
+
+**Trigger parameter declaration** (add to `createParameterLayout()` in the global group):
+
+```cpp
+globalGroup->addChild(std::make_unique<juce::AudioParameterBool>(
+    juce::ParameterID{"RANDOMIZE", 2},  // version 2 — new in v1.2
+    "Randomize",
+    false));
+```
+
+Use `ParameterID{"RANDOMIZE", 2}` (version hint 2). The existing 38 parameters all use version
+hint 1. Adding a new parameter requires version hint 2 so AU hosts (Logic, GarageBand) maintain
+correct parameter ordering — this is explicitly documented in `juce_AudioProcessorParameter.h`.
+
+**processBlock detection** (mirrors OUTPUT_MIX pattern already in the codebase):
+
+```cpp
+// In processBlock, before DSP:
+if (randomizeParam->load() > 0.5f)
+{
+    applyRandomization();
+    randomizeParamObj->setValueNotifyingHost(0.0f);  // reset to false
+}
+```
+
+**Confidence: HIGH** — Pattern is verified directly in existing `PluginProcessor.cpp` lines
+234-258. The `beginChangeGesture`/`endChangeGesture` requirement is documented in
+`juce_AudioProcessorParameter.h` lines 131-156.
+
+---
+
+### Batch Parameter Update
+
+The randomizer must update all ~38 parameters atomically from the message thread (GUI button)
+or audio thread (processBlock automation trigger). These are different contexts with different rules.
+
+#### Context A: GUI Button (message thread)
+
+When the user clicks "Randomize", the button callback runs on the message thread. Use the full
+gesture protocol so DAW automation records the change correctly:
+
+```cpp
+void randomizeFromGUI()
+{
+    juce::Random rng;
+
+    // For each parameter being randomized:
+    auto* param = processorRef.apvts.getParameter("TAP1_POS");
+    param->beginChangeGesture();
+    param->setValueNotifyingHost(rng.nextFloat());  // already normalized [0,1)
+    param->endChangeGesture();
+    // ... repeat for all parameters
+}
+```
+
+`beginChangeGesture` / `endChangeGesture` bracket tells the host automation is starting/ending.
+Omitting them means the DAW may not record the change into an automation lane. This is documented
+in `juce_AudioProcessorParameter.h` lines 143-156 and the `setValueNotifyingHost` docstring
+(line 131-140).
+
+#### Context B: processBlock (audio thread trigger via automation)
+
+When the RANDOMIZE parameter fires from DAW automation, it is detected in processBlock. In this
+context, `setValueNotifyingHost` is legal (it is called from the audio thread when the host
+changes parameters) but `beginChangeGesture`/`endChangeGesture` should not be called from the
+audio thread.
+
+The simplest approach: detect the trigger in processBlock, set an atomic flag, and apply the
+randomization on the next message thread cycle via `juce::MessageManager::callAsync` or
+`juce::AsyncUpdater`. This keeps randomization logic off the audio thread entirely.
+
+```cpp
+// In processBlock:
+if (randomizeParam->load() > 0.5f)
+{
+    randomizeParamObj->setValueNotifyingHost(0.0f);  // reset trigger
+    randomizePending.store(true);  // signal message thread
+}
+
+// In processor or editor (message thread, via AsyncUpdater):
+void handleAsyncUpdate() override
+{
+    if (randomizePending.exchange(false))
+        applyFullRandomization();
+}
+```
+
+This pattern avoids gesture calls on the audio thread and keeps randomization deterministic
+relative to the message thread flush cycle.
+
+#### NormalisableRange and convertTo0to1
+
+Parameters use `NormalisableRange` with skew factors (e.g., BASE_DELAY uses skew 0.5,
+FB_HP_FREQ uses skew 0.3). `setValueNotifyingHost` expects a **normalized [0,1] value**, not
+the physical value.
+
+Two options for generating random values:
+
+**Option 1 (preferred): Generate directly in normalized space.**
+`nextFloat()` returns [0,1) — pass directly to `setValueNotifyingHost`. The NormalisableRange
+will map it to the physical range when the audio thread reads `getRawParameterValue`. This
+produces uniform distribution in normalized space, which means more samples at low values for
+parameters with skew < 1 (delay time, filter frequency). This may be musically preferable —
+more short delays than long, more low frequencies than high.
+
+**Option 2: Generate in physical space, then normalize.**
+Use `param->convertTo0to1(physicalValue)` (verified in `juce_RangedAudioParameter.h` line 123)
+to convert a physical value to normalized before passing to `setValueNotifyingHost`. Use this
+if uniform distribution in physical space is desired (e.g., random delay times equally likely
+to be anywhere in 10-150ms).
+
+For AudioParameterBool, `nextBool()` maps to 0.0f (false) or 1.0f (true) directly.
+For AudioParameterChoice (NOTE_DIV), use `rng.nextInt(numChoices)` and normalize to [0,1].
+
+**Confidence: HIGH** — `convertTo0to1` confirmed in `juce_RangedAudioParameter.h`. The
+normalized-space behavior of `setValueNotifyingHost` is standard JUCE documentation.
+
+---
+
+### GUI Randomize Button
+
+No new component needed. Use the existing `juce::TextButton` (already used for `savePresetButton`
+in `ZeitraumEditor`). Wire it with a `juce::TextButton::onClick` lambda.
+
+```cpp
+// In ZeitraumEditor:
+juce::TextButton randomizeButton { "Randomize" };
+
+// In constructor or resized:
+randomizeButton.onClick = [this] { applyRandomization(); };
+addAndMakeVisible(randomizeButton);
+```
+
+No `ButtonAttachment` needed — the randomizer is a momentary action, not a persistent parameter
+state to reflect in the GUI.
+
+**Confidence: HIGH** — Matches existing `savePresetButton` pattern in `ZeitraumEditor`.
+
+---
+
+## What NOT to Add
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| `std::mt19937` or `std::random_device` | Works fine, but adds no benefit over `juce::Random` which is already available and well-tested in JUCE context | `juce::Random` |
+| `juce::AsyncUpdater` as a standalone class | Unnecessary if processor or editor already inherits it — check first | Inherit in `ZeitraumProcessor` or use `juce::MessageManager::callAsync` |
+| `ParameterAttachment` for the randomize button | Overkill for a momentary trigger action; adds listener lifecycle complexity | Direct `onClick` lambda calling processor method |
+| AudioUnit meta-parameter flag | `isMetaParameter()` is a hint that a param controls other params. Theoretically correct for the trigger, but most hosts ignore it and it complicates AU validation | Leave as default (false) |
+| New JUCE modules | `juce::Random` is in `juce_core`, already linked. No additional CMake changes required | Existing linked modules |
+
+---
+
+## Integration Points in Existing Code
+
+| Existing Component | How Randomizer Integrates |
+|--------------------|--------------------------|
+| `PluginProcessor.h` | Add `std::atomic<float>* randomizeParam = nullptr` and `juce::RangedAudioParameter* randomizeParamObj = nullptr`. Add `std::atomic<bool> randomizePending{false}`. Add `void applyFullRandomization()` method. |
+| `PluginProcessor.cpp` — `createParameterLayout()` | Add `AudioParameterBool{"RANDOMIZE", 2}` to global group. |
+| `PluginProcessor.cpp` — constructor | Cache `randomizeParam` and `randomizeParamObj` via `getRawParameterValue` / `getParameter`. |
+| `PluginProcessor.cpp` — `processBlock` | Detect trigger, reset it, set `randomizePending` flag. |
+| `PluginProcessor.cpp` — `applyFullRandomization()` | New method. Generate random values and call `setValueNotifyingHost` for each of the ~38 parameters. Wrap in `beginChangeGesture`/`endChangeGesture` if called from message thread. |
+| `PluginEditor.h/cpp` | Add `juce::TextButton randomizeButton`. Wire `onClick` to call processor method or fire directly through APVTS. |
+| `getStateInformation` | No change needed — RANDOMIZE param saves/restores as false, which is correct. |
+| XML `pluginVersion` attribute | No change — state version 3 is unchanged; no migration needed since RANDOMIZE defaults to false on restore. |
+
+---
+
+## Parameter Version Hint Requirement
+
+**Critical for Logic Pro / GarageBand AU compatibility.**
+
+The existing 38 parameters all use version hint `1`. The new RANDOMIZE parameter must use
+version hint `2`. This is mandatory per the documentation in `juce_AudioProcessorParameter.h`
+(lines 46-98): AU hosts sort parameters by version hint then by string ID hash. Adding a
+parameter with hint `1` would interleave it with existing parameters and break saved automation.
+
+```cpp
+// Correct:
+juce::ParameterID{"RANDOMIZE", 2}
+
+// Wrong — breaks AU automation ordering:
+juce::ParameterID{"RANDOMIZE", 1}
+```
+
+**Confidence: HIGH** — Directly documented in `juce_AudioProcessorParameter.h` in this project's
+JUCE submodule.
+
+---
 
 ## Alternatives Considered
 
-| Category | Recommended | Alternative | Why Not |
-|----------|-------------|-------------|---------|
-| Framework | JUCE 8 | iPlug2 | Less mature, smaller community, no proven reference project pattern |
-| Framework | JUCE 8 | DPF (DISTRHO) | Good for simple plugins but lacks the DSP module library and GUI capabilities needed for an 8-tap delay with matrix routing |
-| Build system | CMake + Ninja | Projucer | Projucer is legacy JUCE tooling. CMake is the modern approach since JUCE 6 and is what the reference project uses |
-| Build system | CMake + Ninja | Meson, Bazel | Non-standard for JUCE projects. CMake is the only first-class build system JUCE supports |
-| Delay interpolation | Lagrange3rd | Linear | Audible low-pass filtering during modulation |
-| Delay interpolation | Lagrange3rd | Thiran | Stateful -- breaks with fast delay modulation, which is a core feature |
-| Delay interpolation | Lagrange3rd | Custom (Hermite, sinc) | Unnecessary complexity. Lagrange3rd in JUCE is well-tested and performant |
-| Testing | Catch2 v3 | GoogleTest | Either works, but Catch2 is already proven in the reference project |
-| Parameter system | APVTS | Raw AudioProcessorParameter | APVTS provides attachment pattern for GUI binding, undo/redo support, XML state serialization for free |
-| Custom delay buffer | juce::dsp::DelayLine | Hand-rolled circular buffer | DelayLine already handles interpolation, multi-tap reads, and buffer wrapping correctly. No reason to rewrite. |
+| Recommended | Alternative | Why Not |
+|-------------|-------------|---------|
+| Apply-and-reset `AudioParameterBool` for trigger | Keep it permanently "on" when engaged | Apply-and-reset is the established pattern in this codebase (OUTPUT_MIX). It avoids state persistence issues and automation ambiguity. |
+| `juce::Random` member instance | `juce::Random::getSystemRandom()` | System random is a per-thread singleton. Fine for the message thread but semantically cleaner to own the RNG in the class that uses it. |
+| Normalized [0,1] random generation | Physical-space random + `convertTo0to1` | Normalized space is simpler and produces musically useful results (skew causes perceptually appropriate distribution). Use physical-space only if explicit range constraints needed. |
+| `AsyncUpdater` for cross-thread trigger | `MessageManager::callAsync` | Either works. `AsyncUpdater` is more conventional for processor classes; `callAsync` is simpler for one-off triggers. Choose based on whether the processor will accumulate multiple pending randomizations. |
 
-## What NOT to Use
+---
 
-| Technology | Why Not |
-|------------|---------|
-| Projucer | Legacy IDE/project generator. CMake replaced it as the primary build approach in JUCE 6+. Creates non-standard project files that are harder to version control. |
-| `juce::dsp::ProcessorDuplicator` | Tempting for stereo, but the cross-channel feedback routing requires explicit per-channel processing. Do not try to wrap the delay engine in ProcessorDuplicator. |
-| JUCE's `AudioProcessorGraph` | Overkill for this plugin. The routing is a fixed 8-tap matrix, not a user-configurable graph. A direct DSP engine class is simpler and more performant. |
-| VST2 | Deprecated by Steinberg. No SDK available. JUCE 8 still has code paths but actively discourages it. |
-| AAX | Requires iLok/PACE signing infrastructure and Avid developer agreement. Not worth it for an initial release. |
-| LV2 | Linux-focused format. macOS is the primary target. Can be added later trivially (just add `LV2` to FORMATS). |
-| `juce_generate_juce_header` | Deprecated pattern. Include JUCE module headers directly (e.g., `#include <juce_dsp/juce_dsp.h>`). |
+## Version Compatibility
 
-## Project Structure
+| Parameter | Version Hint | Notes |
+|-----------|-------------|-------|
+| All existing 38 params | 1 | Unchanged |
+| RANDOMIZE (new) | **2** | Must be 2 to preserve AU parameter ordering |
 
-Follow the three-sisters pattern:
-
-```
-multi-tap-delay/
-  CMakeLists.txt          # Project root CMake
-  Makefile                # Developer workflow automation
-  lib/
-    JUCE/                 # Git submodule, pinned to 8.0.12
-  src/
-    PluginProcessor.h     # AudioProcessor subclass
-    PluginProcessor.cpp
-    PluginEditor.h        # GUI editor
-    PluginEditor.cpp
-    dsp/
-      DelayEngine.h       # Core DSP engine (testable independently)
-      DelayEngine.cpp
-      FeedbackMatrix.h    # NxN feedback routing
-      FeedbackMatrix.cpp
-      TapProcessor.h      # Per-tap processing (level, filter)
-      TapProcessor.cpp
-  test/
-    PluginTests.cpp       # Catch2 test runner
-    dsp/
-      DelayEngineTests.cpp
-      FeedbackMatrixTests.cpp
-```
-
-## Installation
-
-```bash
-# Clone with JUCE submodule
-git submodule add https://github.com/juce-framework/JUCE.git lib/JUCE
-cd lib/JUCE && git checkout 8.0.12 && cd ../..
-
-# Build (Makefile handles cmake/ninja/submodule automatically)
-make
-
-# Release build
-make release
-
-# Run tests
-make test
-
-# Validate AU
-make validate
-```
-
-No additional package installs needed -- the Makefile auto-installs cmake and ninja via Homebrew if missing. JUCE, Catch2, and clap-juce-extensions are all fetched as source dependencies.
-
-## Confidence Assessment
-
-| Component | Confidence | Notes |
-|-----------|------------|-------|
-| JUCE 8.0.12 | HIGH | Verified directly from the submodule in three-sisters. Version 8.0.12 confirmed in CMakeLists.txt and CHANGE_LIST.md. |
-| CMake + Ninja pattern | HIGH | Directly verified from working three-sisters Makefile and CMakeLists.txt. |
-| juce::dsp::DelayLine | HIGH | Read the full source code. Multi-tap via `popSample(ch, delay, false)` confirmed in the header documentation. |
-| Lagrange3rd interpolation | HIGH | Read the interpolation implementation. 4-point interpolation confirmed. |
-| SmoothedValue | HIGH | Verified in juce_audio_basics module source. |
-| APVTS pattern | HIGH | Standard JUCE pattern, used universally in JUCE plugin development. |
-| Catch2 v3.7.1 | HIGH | Verified from three-sisters CMakeLists.txt FetchContent declaration. |
-| CLAP via clap-juce-extensions | MEDIUM | Known community project but could not verify current API/version. Pin to a specific commit. |
-| FirstOrderTPTFilter for character | MEDIUM | Standard approach for analog-style filtering, but the specific character (Verbos/Buchla emulation) will need tuning during development. |
+---
 
 ## Sources
 
-- Three-sisters reference project: `/Users/matt/src/three-sisters/CMakeLists.txt` (verified CMake pattern, JUCE version, Catch2 integration)
-- Three-sisters Makefile: `/Users/matt/src/three-sisters/Makefile` (verified build automation pattern)
-- JUCE 8.0.12 source: `/Users/matt/src/three-sisters/lib/JUCE/` (verified DelayLine API, SmoothedValue, filter classes, supported formats)
-- JUCE CHANGE_LIST.md: Confirmed version 8.0.12 with VST3 SDK 3.8.0 bundled
-- JUCE CMake API: `/Users/matt/src/three-sisters/lib/JUCE/examples/CMake/AudioPlugin/CMakeLists.txt` (canonical plugin CMake pattern)
-- JUCE format support: `/Users/matt/src/three-sisters/lib/JUCE/extras/Build/CMake/JUCEModuleSupport.cmake` (confirmed AU, AUv3, AAX, LV2, VST, VST3, Standalone, Unity -- no CLAP)
+- `lib/JUCE/modules/juce_core/maths/juce_Random.h` — `juce::Random` API verified (HIGH confidence)
+- `lib/JUCE/modules/juce_audio_processors_headless/processors/juce_AudioProcessorParameter.h` — `setValueNotifyingHost`, `beginChangeGesture`, `endChangeGesture` verified (HIGH confidence)
+- `lib/JUCE/modules/juce_audio_processors_headless/utilities/juce_RangedAudioParameter.h` — `convertTo0to1`, `convertFrom0to1` verified (HIGH confidence)
+- `src/PluginProcessor.cpp` lines 234-258 — existing OUTPUT_MIX apply-and-reset pattern (HIGH confidence, in-codebase verification)
+- `src/PluginProcessor.h` — existing parameter cache pattern (HIGH confidence)
+- [JUCE Random class docs](https://docs.juce.com/master/classRandom.html) — confirms `nextFloat()` range [0, 1.0) (MEDIUM confidence, external)
+
+---
+
+*Stack research for: Preset randomizer feature, Zeitraum v1.2*
+*Researched: 2026-03-10*

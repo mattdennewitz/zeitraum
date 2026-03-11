@@ -1,312 +1,256 @@
-# Domain Pitfalls
+# Pitfalls Research
 
-**Domain:** JUCE multi-tap delay audio plugin with feedback matrix
-**Researched:** 2026-03-05
-**Confidence:** HIGH (based on established JUCE/DSP domain knowledge and reference project patterns)
+**Domain:** Adding preset randomizer to existing JUCE 8 delay plugin with feedback matrix (Zeitraum v1.2)
+**Researched:** 2026-03-10
+**Confidence:** HIGH (based on direct source inspection of the existing codebase, JUCE parameter system internals, and established DSP stability analysis)
+
+---
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites, AU validation failures, or shipping-blocking audio bugs.
+### Pitfall 1: Automatable Trigger Parameter Fires Continuously During Automation Playback
 
-### Pitfall 1: Feedback Matrix Instability (Runaway Oscillation)
+**What goes wrong:**
+A float parameter used as a "randomize" trigger (common pattern: value crosses 0.5 threshold) will fire the randomizer on every `processBlock` call while automation holds the value above 0.5. A DAW automation lane that ramps from 0 to 1 and stays there will cause the plugin to re-randomize on every single block — hundreds of times per second — until the automation value drops below 0.5. This produces continuous chaotic jumping of all 38 parameters with no stable sound.
 
-**What goes wrong:** An NxN feedback routing matrix where any tap can feed back to the input with independent gain makes it trivially easy to create gain loops > 1.0. The delay line output explodes to infinity, producing ear-splitting noise or `NaN`/`inf` values that corrupt the entire signal chain. Users WILL set feedback gains that sum to >1.0 across multiple routing paths.
+**Why it happens:**
+DAW automation records and replays absolute parameter values, not edges. The audio thread reads `triggerParam->load()` in `processBlock` and sees a high value for as long as the automation holds it there. The naively simple implementation `if (triggerParam->load() > 0.5f) doRandomize()` has no edge detection.
 
-**Why it happens:** With 8 taps and cross-channel routing, the effective feedback gain is not the value on any single knob -- it is the spectral radius of the feedback matrix. Two taps each at 0.6 feeding back can sum to >1.0. Cross-channel routing creates even less obvious gain loops.
+**How to avoid:**
+Implement edge detection with a `bool prevTriggerState` member. Only fire randomization on the rising edge (false → true transition):
+```cpp
+bool newTriggerHigh = triggerParam->load() > 0.5f;
+if (newTriggerHigh && !prevTriggerState)
+    scheduleRandomize = true;
+prevTriggerState = newTriggerHigh;
+```
+The parameter value itself should also be designed as a momentary: use 0.0–1.0 range, DAW users automate a brief pulse (0 → 1 → 0), not a sustained hold. Document this in the plugin UI.
 
-**Consequences:** Output clipping, `NaN` propagation (which infects every downstream sample), potential DAW crash, and if `NaN` reaches the AU output, `auval` will fail validation.
+The actual `setValueNotifyingHost` calls for the randomized parameters must NOT happen on the audio thread. Set an `std::atomic<bool> randomizeRequested` flag in `processBlock`, then service it on the message thread via a `juce::Timer` or `juce::AsyncUpdater`. The parameter writes happen on the message thread where they are safe.
 
-**Prevention:**
-- Implement a hard output limiter at the delay line output (before feedback tap-off) as a safety net -- not for sound shaping, but to prevent runaway. A simple `juce::FloatVectorOperations::clip` or `std::clamp` on every sample in the feedback path.
-- Add `NaN`/`inf` detection in `processBlock`: if detected, zero the delay buffer and reset. Use `std::isfinite()` checks on the feedback sum.
-- Consider a soft-knee saturation (e.g., `tanh`) in the feedback path rather than hard clipping -- this is musically useful AND prevents blowup.
-- Do NOT try to mathematically constrain the UI to prevent gain >1.0 -- the interaction effects are too complex and it limits creative use. Instead, make the system robust to hot feedback.
+**Warning signs:**
+- Testing the trigger with DAW automation: all parameters cycle through random values every ~10ms (one block)
+- The "Randomize" button in the UI appears to work correctly (button fires one-shot), but DAW automation control causes continuous chaos
+- In Logic Pro, automating a parameter to a held value of 1.0 and pressing play causes runaway randomization
 
-**Detection:** Test with all feedback gains at maximum. If you hear runaway oscillation within 2 seconds, the safety net is missing. Check for `NaN` in unit tests by running feedback at 0.99 gain for 10 seconds of simulated audio.
-
-**Phase relevance:** Must be addressed in the core DSP engine phase, before any UI work. This is foundational.
-
----
-
-### Pitfall 2: Delay Time Modulation Causes Clicks and Zipper Noise
-
-**What goes wrong:** Changing delay time means changing the read position in the delay buffer. If you jump the read pointer discretely (even by 1 sample), you get a discontinuity in the output waveform -- an audible click. If you step through values without interpolation, you get zipper noise. The project spec explicitly requires "smooth delay time modulation with doppler/tape artifacts."
-
-**Why it happens:** A delay line read position is an index into a circular buffer. Moving from reading at index 1000 to index 1050 means skipping 50 samples of audio history. That skip is a waveform discontinuity. Linear interpolation between old and new positions still produces artifacts if the position change per sample is too large.
-
-**Consequences:** Audible clicks on any parameter change, unusable automation, fails the core "tape delay" character requirement.
-
-**Prevention:**
-- Use the ParameterSmoother pattern from the three-sisters project (one-pole exponential smoother) on the delay time parameter, but with a LONGER time constant than typical parameter smoothing (50-100ms, not 5-10ms). Delay time changes need to be slow enough to sound like tape speed changes.
-- The read position must be a floating-point value, advanced smoothly sample-by-sample. Each sample, the read position moves by `1.0 + delta` where `delta` is the rate of delay time change. This naturally produces pitch-shifting doppler artifacts (the desired "tape" character).
-- Use cubic Hermite or Lagrange interpolation for reading fractional positions from the delay buffer -- linear interpolation introduces audible high-frequency attenuation and noise at long delay times. `juce::dsp::DelayLine` supports `Lagrange3rd` interpolation type.
-- NEVER snap the read pointer. Even when loading a preset with a different delay time, smoothly glide to the new position.
-
-**Detection:** Automate the delay time parameter in a DAW with a sine wave input. Any clicking or stepping artifacts are immediately audible. Write a unit test that modulates delay time and checks for discontinuities (sample-to-sample differences exceeding a threshold).
-
-**Phase relevance:** Core DSP engine phase. The interpolation strategy must be decided before implementing the delay line.
+**Phase to address:**
+Trigger parameter design phase — must be specified before implementation begins.
 
 ---
 
-### Pitfall 3: AU Validation Failure from Tail Time and State Management
+### Pitfall 2: Calling `setValueNotifyingHost` on the Audio Thread
 
-**What goes wrong:** Apple's `auval` tool is notoriously strict. Common failures for delay plugins: incorrect tail time reporting, failure to clear delay buffers on reset, outputting audio after the input stops (without declaring tail time), or producing `NaN`/`inf` values. A single `auval` failure means the plugin cannot ship as AU.
+**What goes wrong:**
+The natural instinct is to randomize all parameters directly inside `processBlock` when the trigger fires. `setValueNotifyingHost` is not real-time safe — it acquires a mutex inside JUCE's `AudioProcessorValueTreeState` to notify listeners. Calling it 38 times on the audio thread (once per parameter) produces priority inversion, causes audio dropouts, and can deadlock when the message thread is simultaneously reading parameter state.
 
-**Why it happens:** `getTailLengthSeconds()` must return the maximum possible delay time (not the current delay time). The three-sisters project returns `0.0` because filters have negligible tail -- a delay plugin cannot do this. Also, `prepareToPlay` must fully reinitialize all state, and `reset()` must zero all delay buffers.
+The existing code already uses `setValueNotifyingHost` on the audio thread in `processBlock` for the `OUTPUT_MIX` preset feature (lines 252–257 of PluginProcessor.cpp). This is a known existing pattern in this codebase that works acceptably for rare events but is technically incorrect and should not be extended.
 
-**Consequences:** Plugin rejected by AU hosts (Logic Pro, GarageBand). Cannot ship on macOS without AU format.
+**Why it happens:**
+`setValueNotifyingHost` is the correct call (it notifies the DAW automation system, updates all attachments, and fires parameter listeners) but it is not documented as audio-thread-safe. The existing `OUTPUT_MIX` usage works in practice because it fires infrequently. Randomizing 38 parameters on the audio thread is a significantly higher load.
 
-**Prevention:**
-- `getTailLengthSeconds()` must return the maximum delay time (with multiplier at max, ~1.2 seconds) PLUS enough time for feedback to decay. For a feedback gain of 0.95, that is roughly `maxDelay * log(threshold) / log(feedbackGain)`. A safe conservative value: return 10.0 seconds (or even 30.0 for high-feedback scenarios).
-- `prepareToPlay()`: allocate and zero ALL delay buffers, reset all smoothers, reset all internal state.
-- `reset()`: zero all delay buffers and reset smoothers to current target values (do NOT re-read parameters, just clear audio state).
-- Never output denormals -- use `juce::ScopedNoDenormals` at the top of `processBlock()`. Denormals cause CPU spikes AND can trigger `auval` failures.
-- The reference project Makefile already has the `auval` validation target with the `killall AudioComponentRegistrar` trick -- reuse this pattern.
-- Run `auval -v aufx <code> <mfr>` after every significant DSP change, not just before release.
+**How to avoid:**
+Use a two-step pattern:
+1. In `processBlock`: detect the trigger edge, store pre-generated random values in a lock-free structure, set `std::atomic<bool> randomizePending{false}`.
+2. In a `juce::AsyncUpdater::handleAsyncUpdate()` override on the processor (or a `juce::Timer` callback in the editor): call `setValueNotifyingHost` for each parameter from the message thread.
 
-**Detection:** Run `make validate` early and often. The first time should be as soon as the plugin produces any audio output. Common `auval` failure messages to watch for: "Render failed", "Produced output after reset", "Tail time incorrect".
+Generate the random values before posting the async update so the actual parameter writes are deterministic from the message thread. Use a simple `std::array<float, 38>` protected by `std::atomic` flag and written before setting the flag — the flag acts as the memory barrier.
 
-**Phase relevance:** Must be considered from the very first processBlock implementation. The Makefile validation target should be set up in the project scaffolding phase.
+**Warning signs:**
+- Audio glitches (dropouts, clicks) when clicking the Randomize button
+- DAW console warnings about priority inversion (some DAWs report this)
+- Works fine at 512-sample buffers, breaks at 64-sample buffers (timing-sensitive)
 
----
-
-### Pitfall 4: Real-Time Thread Violations in processBlock
-
-**What goes wrong:** `processBlock()` runs on the audio thread. Any operation that blocks -- memory allocation (`new`, `std::vector::push_back`), mutex locks, file I/O, Objective-C messaging (on macOS), or even `std::string` operations -- causes audio dropouts (glitches, clicks, silence gaps). This is the single most common mistake in JUCE plugin development.
-
-**Why it happens:** C++ makes it easy to accidentally allocate. Common culprits in a delay plugin:
-- Resizing delay buffers when sample rate changes (must happen in `prepareToPlay`, never in `processBlock`)
-- Using `std::vector` for the feedback matrix routing (reallocation on modification)
-- Calling `juce::AudioProcessorValueTreeState::getParameter()` (returns a pointer, fine) vs `.toString()` (allocates a string, NOT fine)
-- Lambda captures that copy `std::string`
-- Logging/debugging statements left in the audio path
-
-**Consequences:** Audible glitches, especially at small buffer sizes (64 samples = 1.3ms at 48kHz -- zero margin for blocking operations). Professional users testing at 64-sample buffers will immediately notice.
-
-**Prevention:**
-- Use `std::atomic<float>` or `getRawParameterValue()` (returns `std::atomic<float>*`) to read parameters in `processBlock` -- exactly as done in the three-sisters reference project.
-- Pre-allocate ALL buffers in `prepareToPlay()`. The delay buffer, temporary mixing buffers, feedback sum buffers -- everything.
-- The feedback routing matrix should be a fixed-size `std::array<std::array<float, N>, N>` (where N=8 or 10 including preset mixes), not a dynamically-sized container.
-- Use `juce::ScopedNoDenormals` at the top of every `processBlock`.
-- On macOS: set the audio thread to real-time priority (JUCE does this for you, but do not fight it with blocking calls).
-- Consider using a real-time-safe FIFO (e.g., `juce::AbstractFifo`) if the UI needs to send configuration changes to the audio thread (e.g., preset loading).
-
-**Detection:** Use the Thread Sanitizer (`-fsanitize=thread`) during development. On macOS, Instruments "System Trace" can identify audio thread priority inversions. Test at 64-sample buffer size -- if it glitches there but not at 512, you have a real-time violation.
-
-**Phase relevance:** Every phase that touches `processBlock`. Establish the pattern in the core DSP phase and never deviate.
+**Phase to address:**
+Core implementation — architecture must be decided before writing any randomizer code.
 
 ---
 
-### Pitfall 5: CLAP Support Requires clap-juce-extensions (Not Built Into JUCE)
+### Pitfall 3: Feedback Instability After Randomization — No Gradual Transition
 
-**What goes wrong:** JUCE does not natively support CLAP format. Developers assume adding "CLAP" to the `FORMATS` list in `juce_add_plugin()` will work. It will not compile. CLAP requires a separate open-source wrapper library (`clap-juce-extensions`) integrated into the CMake build.
+**What goes wrong:**
+The `DelayEngine` smooths delay time parameters (`baseDelaySmoother`, `multiplierSmoother`, `tapDelay` smoothers) but the feedback gain values read directly from atomic parameters with no smoothing. When randomization sets all 12 feedback gains simultaneously to new values, the feedback matrix changes instantaneously within one `processBlock` call. If the randomizer generates multiple high feedback gains (easily possible — e.g., FB_TAP1=80%, FB_TAP3=75%, FB_ODD=60%), the feedback sum can exceed 1.0 and cause runaway in that very first block after randomization.
 
-**Why it happens:** CLAP is a newer plugin format not yet adopted into the JUCE core. The three-sisters reference project does not include CLAP (it lists `VST3 AU Standalone`). Adding CLAP is additional build system work.
+The existing `FeedbackSaturator` provides a safety net via `tanh` clipping but the transition from a stable state to a hot feedback configuration can still produce an audible transient spike before the saturator clamps it.
 
-**Consequences:** Build failure if attempted naively. If deferred too long, integrating CLAP late can reveal incompatibilities with parameter handling or state save/restore.
+**Why it happens:**
+Randomizing all parameters uniformly without regard for their interaction in the feedback matrix. The feedback gains are correlated — their sum determines stability, but each is drawn independently from U(0, max). The probability of drawing a stable set purely by chance is low if max is 100%.
 
-**Prevention:**
-- Add `clap-juce-extensions` as a git submodule (like JUCE itself) or use `FetchContent` in CMake.
-- Integration pattern:
-  ```cmake
-  add_subdirectory(lib/clap-juce-extensions EXCLUDE_FROM_ALL)
-  clap_juce_extensions_plugin(TARGET MultiTapDelay
-      CLAP_ID "com.diestilleerde.multi-tap-delay"
-      CLAP_FEATURES audio-effect delay)
-  ```
-- The CLAP ID must be a reverse-DNS identifier, unique to your plugin. Decide this early.
-- CLAP exposes parameter metadata differently -- ensure all parameters have proper IDs, names, and ranges. The `ParameterID{"NAME", version}` pattern from three-sisters works well for this.
-- Test CLAP in Bitwig (the DAW with the best CLAP support) and Reaper early.
+**How to avoid:**
+Two complementary strategies:
 
-**Detection:** Attempt a CLAP build as soon as the basic plugin skeleton compiles for VST3/AU. Do not wait until the end.
+Strategy A — Constrain the random distribution. Rather than uniform random per gain, normalize the generated feedback gains so the total does not exceed a safe ceiling (e.g., 80% of full scale). After generating 12 raw random values, scale them all by `safeMax / max(rawSum, safeMax)`.
 
-**Phase relevance:** Project scaffolding / build system phase. Get the CMake integration working with a pass-through plugin before building DSP.
+Strategy B — Smooth the transition. After randomization, don't jump to new feedback gains immediately. Add per-gain smoothers to the feedback path (same `OnePoleSmooth` already used for other params). A 100ms crossfade from old gains to new eliminates the transient spike entirely.
 
----
+Strategy A is simpler and sufficient. Strategy B is more polished but requires touching `DelayEngine`/`FeedbackMatrix`.
 
-## Moderate Pitfalls
+**Warning signs:**
+- Loud click or pop when clicking Randomize while audio is playing
+- Rare but reproducible: certain random seeds cause runaway oscillation before saturator catches it
+- Test: randomize 100 times with a sine wave input, record output — any samples exceeding 0dBFS after randomization indicates insufficient protection
 
-### Pitfall 6: Shared Delay Line Architecture -- Write vs Read Ordering
-
-**What goes wrong:** With 8 taps reading from a single shared delay line per channel, the order of operations matters. If you write the new input sample to the delay buffer before reading tap outputs, the shortest tap reads the just-written sample (effectively zero delay). If taps feed back into the input before the write, you get one-buffer-length of latency in the feedback path.
-
-**Why it happens:** A circular buffer has one write head and multiple read heads. The write-then-read vs read-then-write ordering creates a one-sample difference that compounds in feedback paths.
-
-**Prevention:**
-- Use read-then-write ordering: read all tap outputs first, compute the feedback sum, mix with incoming audio, THEN write to the buffer. This ensures even the shortest tap has at least 1 sample of delay.
-- Process sample-by-sample (not block-by-block) for the inner loop. The feedback computation requires the previous sample's tap outputs, so you cannot vectorize the feedback path across the entire block.
-- Document the signal flow clearly in code comments.
-
-**Detection:** Set a single tap at minimum delay with feedback at 0.9. If you hear a comb filter at `sampleRate/1` instead of `sampleRate/minDelay`, the ordering is wrong.
-
-**Phase relevance:** Core DSP engine design. Must be correct from the start.
+**Phase to address:**
+Core implementation — the constrained random distribution must be part of the randomizer algorithm, not an afterthought.
 
 ---
 
-### Pitfall 7: Per-Tap Level Controls and Preset Mixes -- Gain Staging
+### Pitfall 4: Custom ParameterAttachment Components Not Updating When Parameters Change from Code
 
-**What goes wrong:** 8 individual tap levels, 4 preset mixes (odd, even, rising, falling), and a feedback matrix all multiply gains. Without proper gain staging, the output is either inaudibly quiet or massively clipping. Users combining multiple preset mixes with high feedback will easily hit +20dB or more.
+**What goes wrong:**
+`TapPositionBar`, `FeedbackGainCell`, and `TapLevelFader` use `juce::ParameterAttachment` with a lambda callback to receive parameter changes and update their visual state. When `setValueNotifyingHost` is called externally (as the randomizer will do), JUCE fires all registered listeners including the attachment callbacks. Each attachment's callback calls `repaint()`. With 38 parameters updated in sequence, 38 separate `repaint()` calls fire on the message thread — one per parameter.
 
-**Why it happens:** Each gain stage is reasonable in isolation. 8 taps at unity gain already means +9dB if they are coherent. Add preset mix gains and feedback, and the headroom math gets complex.
+This is correct behavior, but if the parameter updates happen rapidly in a tight loop (as they will from `handleAsyncUpdate`), each repaint queues a component repaint. JUCE coalesces repaints for components on the same repaint region, but components in different visual areas (8 tap bars + 12 feedback cells + 8 level faders + 10 global controls) may all fire independently, causing a visible "flash" as they update one-by-one rather than atomically.
 
-**Prevention:**
-- Normalize preset mixes: the "all odd taps" mix should divide by the number of active taps, not sum at unity.
-- Add a master output level control with a sensible default (e.g., -6dB) to give headroom.
-- Use per-tap gain ranges of 0.0 to 1.0 (not 0.0 to 2.0 or higher).
-- Put a soft clipper or limiter on the final output as a safety net.
+**Why it happens:**
+`setValueNotifyingHost` fires synchronously on the calling thread (message thread). Each call completes before the next, so the 38 attachment callbacks fire in sequence within a single event loop iteration. Each `repaint()` schedules a deferred paint. The actual painting happens after all 38 updates complete (because JUCE defers painting), so in practice the visual update is atomic. However, this relies on JUCE's repaint coalescing — it is implementation behavior, not a documented contract.
 
-**Detection:** Feed a 0dBFS sine wave, enable all taps at unity, all preset mixes, and measure the output level. If it exceeds +6dB, gain staging needs work.
+**How to avoid:**
+The existing `ignoreCallbacks` flag pattern in `FeedbackGainCell` and `TapPositionBar` is for the component's own drag operations, not for external parameter updates. For the randomizer:
 
-**Phase relevance:** DSP engine phase, but the UI/parameter design must account for it too.
+- Allow the normal attachment callback pathway to update all components — it will work correctly due to JUCE's deferred repaint coalescing
+- Do NOT add extra repaint logic or direct component state writes alongside the `setValueNotifyingHost` calls (double-update risk)
+- If visual atomicity is a concern, call `getTopLevelComponent()->repaint()` once after all parameter writes complete, but this is likely unnecessary
 
----
+The `ignoreCallbacks` flag in the components will NOT be set during externally-triggered updates (it's only set during the component's own drag). This is correct. The attachment callback will fire and update `currentValue` — the component will display the new value as expected.
 
-### Pitfall 8: Delay Buffer Size Calculation Errors
+**Warning signs:**
+- After clicking Randomize, some components show old values briefly then snap to new values
+- Components that use `ignoreCallbacks` appear to not update (investigate: they will update correctly from external changes because `ignoreCallbacks` is only set during self-initiated drags)
+- Visual flicker or partial update visible on fast machines (unlikely but test on single-threaded rendering)
 
-**What goes wrong:** The delay buffer must be large enough to hold the maximum delay time at the maximum sample rate. Common mistake: calculating buffer size at 44.1kHz but the DAW runs at 96kHz or 192kHz, causing buffer overrun and reading garbage memory (or crashing).
-
-**Why it happens:** `prepareToPlay` provides the current sample rate. If you hardcode a buffer size or forget to recalculate when sample rate changes, the buffer is too small at higher rates.
-
-**Prevention:**
-- Calculate buffer size as: `maxDelaySeconds * sampleRate + interpolationPadding`. For 1.2s max delay at 192kHz, that is 230,400 samples + padding for cubic interpolation (3-4 extra samples).
-- Always recalculate in `prepareToPlay`. Round UP to the next power of 2 for efficient modulo-free wrapping (use bitwise AND instead of modulo for circular buffer indexing).
-- JUCE's `juce::dsp::DelayLine` handles this if you use `setMaximumDelayInSamples()` in `prepare()`, but if rolling your own, do the math carefully.
-
-**Detection:** Test at 192kHz sample rate. If you hear garbage audio or the plugin crashes, the buffer is undersized.
-
-**Phase relevance:** Core DSP engine phase.
+**Phase to address:**
+Implementation — verify visually after wiring up the randomizer. No architecture change needed, just awareness.
 
 ---
 
-### Pitfall 9: State Save/Restore Losing Feedback Matrix Configuration
+### Pitfall 5: The Trigger Parameter Saved in Plugin State — Restores in "Active" Position
 
-**What goes wrong:** `getStateInformation()` and `setStateInformation()` must serialize and restore the entire feedback routing matrix. If the matrix is not part of the `AudioProcessorValueTreeState` (APVTS) parameter tree, it will not be saved automatically. Users lose their carefully crafted feedback routings when reopening a project.
+**What goes wrong:**
+If the randomize trigger parameter is a standard `AudioParameterFloat` in the APVTS, its value is serialized in `getStateInformation()` along with all other parameters. If a user saves a DAW session while the trigger is held at 1.0 (or if automation automation has set it to 1.0), the plugin will restore with `triggerParam == 1.0f`. On the next `prepareToPlay`/first `processBlock`, if edge detection is not carefully initialized, the rising edge may not fire (good) or may fire spuriously (bad).
 
-**Why it happens:** An 8x8 feedback matrix is 64 parameters (or more with cross-channel routing). Some developers store the matrix outside APVTS for convenience, then forget to serialize it. Others add the parameters to APVTS but use inconsistent parameter IDs between versions, breaking old sessions.
+More subtle: if the trigger value is saved as 1.0 in the session, then `prevTriggerState` is initialized to `false` (default), and the first `processBlock` sees `newTriggerHigh=true`, `prevTriggerState=false` — and fires randomization immediately on project load. The user's carefully set parameters get overwritten by a randomization on every project open.
 
-**Prevention:**
-- Make every matrix gain a proper APVTS parameter with a stable `ParameterID`. Use a systematic naming scheme: `"FB_R0_C0"` through `"FB_R7_C7"` (or include channel: `"FB_L_R0_C0"`).
-- The version number in `ParameterID{"FB_R0_C0", 1}` enables future parameter range changes without breaking saved sessions.
-- Use APVTS's built-in XML serialization (`apvts.copyState().createXml()` and `apvts.replaceState()`) -- do not roll your own serialization.
-- Test: save a preset, close the DAW, reopen, verify every matrix value restored correctly.
+**Why it happens:**
+Edge detection state (`prevTriggerState`) is not persisted — it's reset to `false` on each plugin instantiation. The trigger parameter value IS persisted via APVTS. When a session saves with trigger=1.0 and loads fresh, the plugin behaves as if it just received a rising edge.
 
-**Detection:** Automate this in a test: set non-default values for every parameter, serialize, deserialize, compare. Any mismatch is a bug.
+**How to avoid:**
+Initialize `prevTriggerState` to match the current parameter value at construction time (not to `false`):
+```cpp
+// In constructor, after setting up APVTS:
+prevTriggerState = (triggerParam->load() > 0.5f);
+```
 
-**Phase relevance:** Parameter/state management phase. Design the parameter naming scheme before implementing the matrix.
+Additionally, reset the trigger parameter to 0.0 immediately after processing the rising edge (make it momentary/self-resetting). This ensures the saved state always has trigger=0.0. If using automation, document that automation should use brief pulses.
 
----
+Alternatively, exclude the trigger parameter from `getStateInformation()` entirely by storing it outside the APVTS (but this complicates the design — the trigger must still be automatable, so it must be in APVTS).
 
-### Pitfall 10: Cross-Channel Feedback Creates Mono Collapse
+**Warning signs:**
+- Opening a saved DAW session causes immediate randomization — all parameters jump to new random values
+- Hard to reproduce in testing because it only manifests on session load, not during live editing
+- Test: save session with trigger=1.0 → close DAW → reopen session → verify no randomization occurs
 
-**What goes wrong:** When left-channel taps feed into the right channel and vice versa, repeated feedback iterations mix L and R together. After enough feedback loops, the stereo image collapses to mono. The delay output sounds "narrow" compared to the input.
-
-**Why it happens:** Cross-feedback is literally mixing the channels. Each feedback iteration reduces the L/R difference. With high feedback gains, convergence to mono is fast.
-
-**Prevention:**
-- This is partly expected behavior and partly a design challenge. Mitigations:
-  - Default cross-feedback gains to 0.0 (off), so users opt in.
-  - Apply a subtle stereo width enhancement after the feedback path (e.g., a Haas effect or mid/side processing on the output).
-  - Limit cross-feedback gain range to lower values than same-channel feedback (e.g., 0.0-0.5 vs 0.0-0.95).
-  - Add a "stereo spread" control that applies slight delay time offsets between L and R taps.
-- Document this behavior for users -- it is inherent to cross-feedback topology.
-
-**Detection:** Feed a hard-panned signal (full left), enable cross-feedback at 0.7, listen to the output after 5-10 feedback iterations. If the signal is centered, mono collapse is happening.
-
-**Phase relevance:** DSP engine phase, but the parameter range decisions affect UI design.
+**Phase to address:**
+Trigger parameter design — the initialization pattern must be specified before implementation.
 
 ---
 
-## Minor Pitfalls
+## Technical Debt Patterns
 
-### Pitfall 11: DONT_SET_USING_JUCE_NAMESPACE Inconsistency
-
-**What goes wrong:** The three-sisters project sets `DONT_SET_USING_JUCE_NAMESPACE=1`, requiring all JUCE types to be prefixed with `juce::`. If this is set inconsistently between the plugin target and the test target, code compiles in one but not the other.
-
-**Prevention:** Set this definition on both targets (plugin and test). Copy the pattern from three-sisters exactly: `target_compile_definitions` on both `MultiTapDelay` and `MultiTapDelayTests` with identical definitions.
-
-**Phase relevance:** Project scaffolding phase.
-
----
-
-### Pitfall 12: 10ms Tap Quantization Interacting Poorly with Sample Rates
-
-**What goes wrong:** The spec calls for tap time quantization in 10ms steps. At 44.1kHz, 10ms = 441 samples. At 48kHz, 10ms = 480 samples. At 96kHz, 10ms = 960 samples. If quantization is implemented in samples rather than time, the behavior changes with sample rate.
-
-**Prevention:** Always quantize in the time domain (milliseconds), then convert to samples. Store delay times as milliseconds internally, convert to sample counts in `prepareToPlay` and when the parameter changes.
-
-**Detection:** Change the DAW sample rate and verify tap positions remain at the same time values.
-
-**Phase relevance:** Core DSP engine phase.
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| Call `setValueNotifyingHost` on audio thread for randomizer (extending existing OUTPUT_MIX pattern) | Simple, matches existing code | Audio thread blocking, potential deadlock under load | Never for 38-parameter randomize; acceptable only for single infrequent parameter resets |
+| Uniform random distribution for all feedback gains (no normalization) | Trivial to implement | Frequent runaway oscillation on randomize, bad user experience | Never — normalization adds ~5 lines |
+| Trigger parameter without edge detection | Works for button press, fails for automation | Continuous re-randomization when DAW holds param high | Never |
+| Skip `prevTriggerState` initialization from saved state | Saves one line | Session load randomizes unexpectedly | Never |
+| Randomize tap positions without respecting quantize flag | Simpler | Violates quantize mode contract; positions snap on next interaction | Acceptable as v1 if documented; fix in v1.3 |
 
 ---
 
-### Pitfall 13: GUI Repainting Blocking the Message Thread
+## Integration Gotchas
 
-**What goes wrong:** The feedback matrix UI (potentially 64+ knobs or a grid control) triggers excessive repaints. If every parameter change repaints the entire matrix grid, the UI becomes sluggish, and because JUCE's message thread handles both UI and parameter dispatch, this can cause audio dropouts on some hosts.
-
-**Prevention:**
-- Use `repaint(Rectangle<int>)` to repaint only the changed cell, not the entire matrix.
-- Throttle visual updates to ~30fps using a `juce::Timer`, reading parameter values in the timer callback and only repainting if values changed.
-- Consider a custom component that draws the matrix as a single bitmap and only redraws dirty cells.
-- Do NOT read audio-thread state directly from the paint method -- use `std::atomic` or a lock-free FIFO for meter/visualization data.
-
-**Phase relevance:** UI implementation phase.
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| APVTS + randomizer | Calling `apvts.getParameter("X")->setValueNotifyingHost(v)` 38 times on audio thread | Set `std::atomic<bool>` flag on audio thread, call all `setValueNotifyingHost` from `juce::AsyncUpdater::handleAsyncUpdate()` on message thread |
+| ParameterAttachment + bulk update | Manually calling `attachment.setValue()` alongside `setValueNotifyingHost()` | Only call `setValueNotifyingHost()` — attachments listen via their registered callbacks, no manual sync needed |
+| Randomize button + DAW automation | Button uses `setValueNotifyingHost` to set trigger=1.0, but DAW records this and holds it | Button should use `setValueAsCompleteGesture` with an immediate reset to 0.0 in the same gesture, OR use `beginGesture / setValueAsPartOfGesture(1.0) / endGesture / setValueAsPartOfGesture(0.0) / endGesture` (two gestures) |
+| Feedback gain normalization + randomizer | Randomizing feedback gains without knowing the saturation will catch extremes | Normalize at generation time so the randomizer respects the same stability contract as manual use |
+| Tap positions + quantize | Randomizing TAP_POS to arbitrary float values when QUANTIZE is on | If `quantizeParam->load() > 0.5f`, snap each generated position to the nearest 10ms step before writing; or let the DSP engine handle it (it already quantizes on read) |
 
 ---
 
-### Pitfall 14: Cubic Interpolation Reads Beyond Buffer Bounds
+## Performance Traps
 
-**What goes wrong:** Cubic (Hermite/Lagrange) interpolation needs 4 sample points (2 before and 1 after the target position, or 1 before and 2 after depending on the formulation). At the boundaries of the circular buffer, naive indexing reads outside the allocated memory.
-
-**Prevention:**
-- When using a circular buffer, always apply the wrapping mask/modulo to EVERY index used in the interpolation formula, not just the primary read index.
-- If using `juce::dsp::DelayLine`, this is handled internally. If rolling your own, allocate `bufferSize + 4` samples and copy the wrap-around region, or use masked indexing.
-- Write a test that sets the delay time such that the read position is exactly at the buffer boundary.
-
-**Phase relevance:** Core DSP engine phase, delay line implementation.
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| 38 `setValueNotifyingHost` calls firing synchronously on message thread | UI freeze for ~1-5ms (imperceptible at 60fps) | Acceptable; no optimization needed unless future parameter count grows | Only an issue if parameter count exceeds ~200 |
+| `handleAsyncUpdate` called while previous update still pending | Double-randomize: partial first set overwritten mid-update | Use a single `std::atomic<bool>` flag; `triggerAsyncUpdate()` is idempotent (safe to call while pending) | If randomize button is clicked repeatedly at very high speed |
+| All 8 `TapPositionBar` repaints + 12 `FeedbackGainCell` repaints firing within one message loop iteration | Visual flash on slower machines | JUCE deferred repaint coalesces these; no action needed | Only on machines with very slow GPU compositing |
 
 ---
 
-### Pitfall 15: Multiplier Dial Creates Sudden Large Delay Jumps
+## UX Pitfalls
 
-**What goes wrong:** The spec mentions a "multiplier dial extending to ~1.2s total" from a base range of ~10-150ms. If the multiplier is applied as a discrete multiplication (e.g., 1x, 2x, 4x, 8x), changing the multiplier causes all tap positions to jump suddenly, creating a massive click even with delay time smoothing.
-
-**Prevention:**
-- Apply parameter smoothing to the multiplier value itself, not just to the final delay time.
-- Or better: compute the final delay time (base * multiplier) and smooth THAT. The smoother will handle the large jump, but the smoothing time should be proportional to the jump size (use adaptive smoothing or a longer time constant for the multiplier).
-- Consider making the multiplier continuous rather than stepped, to avoid any discontinuities.
-
-**Detection:** Automate the multiplier parameter with a step change. If you hear a click, the smoothing is insufficient.
-
-**Phase relevance:** Core DSP engine phase, parameter design.
+| Pitfall | User Impact | Better Approach |
+|---------|-------------|-----------------|
+| No undo for randomize | User clicks Randomize, hears something they liked before, cannot recover | Implement undo via `juce::UndoManager` in APVTS (pass `&undoManager` as second arg to APVTS constructor, call `undoManager.beginNewTransaction()` before randomize writes) — or at minimum document that Cmd+Z does not undo randomize |
+| All parameters randomize simultaneously with no preview | Disorienting; user cannot A/B | No practical solution without significant scope expansion; document expected behavior |
+| Randomize produces unmusical values for tap positions (e.g., all taps at 95–99% of max delay) | Output sounds like noise, not music | Bias tap position distribution toward lower values (exponential or square-root distribution rather than uniform); taps at short delay times are generally more musical |
+| Randomize button has no visual feedback that it fired | User clicks, nothing visible happens, wonders if it worked | Flash the button briefly (e.g., set highlighted state for 100ms) after firing |
+| Randomizing MIX to near-zero makes the randomization inaudible | User hears no change, confused | Clamp MIX lower bound during randomization to 30% minimum, or exclude MIX from randomization and let user control it |
 
 ---
 
-## Phase-Specific Warnings
+## "Looks Done But Isn't" Checklist
 
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Project scaffolding / build system | CLAP integration fails (Pitfall 5) | Add clap-juce-extensions submodule from day 1, verify all 3 formats build before writing DSP |
-| Project scaffolding / build system | Namespace inconsistency (Pitfall 11) | Copy three-sisters CMake definitions exactly for both plugin and test targets |
-| Core DSP engine | Feedback blowup (Pitfall 1) | Implement saturation/limiter in feedback path before any other DSP work |
-| Core DSP engine | Delay time clicks (Pitfall 2) | Use fractional delay with cubic interpolation and one-pole smoothing from the start |
-| Core DSP engine | Write/read ordering (Pitfall 6) | Read-then-write, sample-by-sample inner loop, document signal flow |
-| Core DSP engine | Buffer size errors (Pitfall 8) | Calculate from max delay * max sample rate, test at 192kHz |
-| Core DSP engine | Interpolation boundary errors (Pitfall 14) | Wrap all indices in interpolation formula, unit test at buffer boundaries |
-| Core DSP engine | Multiplier clicks (Pitfall 15) | Smooth final delay time, not just base time |
-| Parameter design | State save/restore (Pitfall 9) | Systematic parameter IDs for all 64+ matrix gains, all in APVTS |
-| Parameter design | Gain staging (Pitfall 7) | Normalize preset mixes, default master level at -6dB |
-| Parameter design | Quantization vs sample rate (Pitfall 12) | Quantize in ms, convert to samples per-rate |
-| AU validation | Tail time, reset, denormals (Pitfall 3) | Set up `make validate` in scaffolding, run after every DSP change |
-| Audio thread safety | Real-time violations (Pitfall 4) | Pre-allocate everything, use atomics, test at 64-sample buffers |
-| Stereo processing | Mono collapse (Pitfall 10) | Default cross-feedback to 0, limit range, add stereo spread option |
-| UI implementation | Repaint performance (Pitfall 13) | Timer-based throttled updates, dirty-cell repainting only |
+- [ ] **Trigger parameter:** Fires on rising edge only — verify with held automation in Logic/Reaper that it does NOT re-randomize continuously
+- [ ] **Session load safety:** Verify opening a saved session with trigger=1.0 does NOT randomize on load
+- [ ] **Audio thread safety:** Verify `setValueNotifyingHost` is called from message thread, not `processBlock` — check with Thread Sanitizer
+- [ ] **Feedback stability after randomize:** Run 100 randomizations with audio playing, check output for values exceeding 0dBFS
+- [ ] **UI sync:** After randomize, verify ALL custom components (TapPositionBar, FeedbackGainCell, TapLevelFader) show updated values — not just the sliders in TopBar
+- [ ] **Quantize mode respect:** Randomized tap positions in quantize mode snap to 10ms grid — either at generation time or verify DSP engine handles it
+- [ ] **State round-trip:** Save after randomize, reload, verify randomized values persisted correctly
+- [ ] **Trigger param state:** After randomize fires, trigger parameter value is back to 0.0 in saved state (not stuck at 1.0)
+- [ ] **Undo behavior documented:** If UndoManager not implemented, CLAUDE.md or plugin docs note that Cmd+Z does not undo randomize
+
+---
+
+## Recovery Strategies
+
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| Continuous re-randomize in automation | LOW | Add `prevTriggerState` edge detection; one-line fix |
+| Audio thread `setValueNotifyingHost` | MEDIUM | Refactor to AsyncUpdater pattern; ~30 lines of structural change |
+| Feedback instability on randomize | LOW | Add gain normalization in randomizer function; ~10 lines |
+| Session load randomizes unexpectedly | LOW | Initialize `prevTriggerState` from saved param value in constructor; one-line fix |
+| UI components not updating | LOW | Verify attachment callback pathway; likely no code change needed |
+| UndoManager absent | MEDIUM | Add `juce::UndoManager` to APVTS constructor (requires passing `&undoManager` to APVTS — this is a constructor change with no behavioral side effects); call `beginNewTransaction()` before randomize |
+
+---
+
+## Pitfall-to-Phase Mapping
+
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| Continuous re-randomize (Pitfall 1) | Trigger parameter design — spec edge detection before any code | DAW automation test: hold trigger=1.0, play, count randomize events (must be exactly 1) |
+| Audio thread safety (Pitfall 2) | Architecture decision — AsyncUpdater vs. Timer pattern | Thread Sanitizer run; dropouts at 64-sample buffer size test |
+| Feedback instability (Pitfall 3) | Core randomizer algorithm — add gain normalization | 100-randomize stress test with audio playing; 0 samples exceeding 0dBFS |
+| UI sync flash (Pitfall 4) | Implementation / visual QA | Click Randomize 20 times rapidly, observe all custom components update correctly |
+| Trigger param in saved state (Pitfall 5) | Trigger parameter design — momentary reset pattern | Save session with trigger=1.0, close, reopen, verify no randomization |
+
+---
 
 ## Sources
 
-- JUCE `AudioProcessor` API documentation (getTailLengthSeconds, prepareToPlay, reset, processBlock contracts)
-- JUCE `dsp::DelayLine` documentation (interpolation types, prepare/setMaximumDelayInSamples)
-- Three-sisters reference project (`/Users/matt/src/three-sisters/`) -- CMakeLists.txt, PluginProcessor.cpp, ParameterSmoother.h patterns
-- `clap-juce-extensions` GitHub repository (CMake integration pattern)
-- Apple `auval` documentation (AU validation requirements)
-- General DSP knowledge: circular buffer interpolation, feedback stability, gain staging principles
+- Zeitraum `PluginProcessor.cpp` — existing `OUTPUT_MIX` preset apply-and-reset pattern (lines 234–258) as reference for trigger parameter behavior
+- Zeitraum `PluginProcessor.h` — parameter cache pointer pattern; all 38 parameters identified
+- Zeitraum `FeedbackGainCell.h`, `TapPositionBar.h` — `ParameterAttachment` + `ignoreCallbacks` pattern; confirms callbacks fire on parameter updates from external sources
+- Zeitraum `TopBar.h` — `SliderAttachment`/`ButtonAttachment`/`ComboBoxAttachment` usage; confirms standard attachment pathway for global params
+- Zeitraum `DelayEngine.h` — `OnePoleSmooth` used for delay times, NOT for feedback gains; confirms feedback gains are read raw from atomics
+- Zeitraum `FeedbackSaturator.h` — tanh saturation safety net exists; does not prevent transient spike on instantaneous gain change
+- JUCE `AudioProcessorValueTreeState` API — `setValueNotifyingHost` is not documented as audio-thread-safe; `AsyncUpdater` is the standard JUCE pattern for deferred message-thread work
+- JUCE `ParameterAttachment` — callbacks fire on any thread that calls `setValueNotifyingHost`; the attachment marshals to the message thread via `AsyncUpdater` internally, so visual updates are always on message thread
+- General DAW automation contract: parameters hold their last automation value; edge detection is the plugin's responsibility
+
+---
+*Pitfalls research for: JUCE preset randomizer integration (Zeitraum v1.2)*
+*Researched: 2026-03-10*

@@ -1,173 +1,147 @@
 # Project Research Summary
 
-**Project:** Multi-Tap Delay
-**Domain:** JUCE audio plugin (VST3/AU/CLAP) -- multi-tap delay with feedback matrix
-**Researched:** 2026-03-05
+**Project:** Zeitraum — Preset Randomizer (v1.2 milestone)
+**Domain:** JUCE 8 audio plugin — parameter randomization feature
+**Researched:** 2026-03-10
 **Confidence:** HIGH
 
 ## Executive Summary
 
-This is a C++ audio plugin built with JUCE 8 that emulates the shared serial delay line architecture of the Verbos Multi-Delay Processor and Buchla 288 Time Domain Processor. The key architectural insight is that this is NOT a collection of independent delay lines -- it is a single delay buffer per channel with 8 tap read positions, producing the inter-tap comb filtering and resonance patterns that define the product identity. The stack is well-proven: JUCE 8.0.12 via git submodule, CMake + Ninja build system, and the three-sisters reference project provides a verified pattern for project structure, build automation, parameter management, and AU validation.
+The preset randomizer for Zeitraum is a parameter-writing feature, not a DSP feature. All 38 parameters already exist in APVTS; randomization simply generates new values for them and calls `setValueNotifyingHost` on each. The existing codebase has two direct precedents to follow: the `OUTPUT_MIX` apply-and-reset trigger pattern and the `recallTapPreset` batch parameter update. No new dependencies, DSP classes, or modules are required — `juce::Random` is already in `juce_core`.
 
-The recommended approach is to build bottom-up: pure DSP primitives first (delay line, tap readers, feedback matrix), compose them into a per-channel engine, wire into the JUCE AudioProcessor shell, then build the GUI last. This ordering lets the DSP core be thoroughly unit-tested with Catch2 before any JUCE integration concerns arise. The feedback matrix (the primary differentiator) is architecturally a 24x2 matrix (8 taps + 4 preset mixes per channel, 2 destination channels), which is manageable as APVTS parameters with systematic naming.
+The recommended approach is a four-step build order: (1) add the RANDOMIZE bool parameter to the layout with version hint 2, (2) implement `randomizeAllParameters()` on `ZeitraumProcessor` with sorted tap positions and clamped ranges for feedback and wet/dry, (3) wire a `juce::TextButton` in `ZeitraumEditor`, and (4) add processBlock edge-detection to handle DAW automation. The automatable trigger is the primary differentiator — no competing delay plugin exposes it — but it carries the most implementation risk due to the audio-to-message-thread dispatch requirement.
 
-The dominant risks are feedback instability (NxN routing makes gain loops trivially easy to create), delay time modulation artifacts (clicks from read pointer discontinuities), and AU validation failures (tail time, reset behavior, denormals). All three have well-known mitigations: tanh saturation in the feedback path, Lagrange3rd fractional-sample interpolation with parameter smoothing, and rigorous use of `auval` from the earliest functional build. CLAP support requires the external `clap-juce-extensions` library and should be integrated in the scaffolding phase rather than bolted on later.
+The critical risks are well-understood and preventable. The two non-negotiable correctness requirements are: (a) `setValueNotifyingHost` must be called on the message thread, not the audio thread, and (b) trigger detection must use rising-edge logic (`prevTriggerState`) to prevent continuous re-randomization when a DAW automation lane holds the parameter high. A third risk — feedback instability from simultaneous high-gain randomization — is resolved by normalizing the sum of generated feedback gains to a safe ceiling before writing. All three are low-recovery-cost if addressed at the design stage.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The entire stack is anchored on JUCE 8.0.12 and the proven three-sisters project pattern. No external dependencies beyond JUCE, Catch2, and clap-juce-extensions.
+No new dependencies are needed. The entire feature is implemented using existing JUCE infrastructure already linked in the project. `juce::Random` (in `juce_core`) provides the RNG. The APVTS parameter system handles state persistence, DAW automation, and UI sync automatically via `ParameterAttachment`. `juce::MessageManager::callAsync` handles the audio-to-message-thread dispatch required for the automation trigger path.
 
 **Core technologies:**
-- **JUCE 8.0.12:** Plugin framework -- industry standard, provides audio processing, GUI, plugin format wrappers, and DSP primitives. Use as git submodule.
-- **C++17:** Language standard -- JUCE 8 minimum requirement. C++20 adds no critical value here.
-- **CMake 3.22+ / Ninja:** Build system -- canonical JUCE build approach via `juce_add_plugin()`. Makefile wraps for developer workflow.
-- **juce::dsp::DelayLine (Lagrange3rd):** Core delay buffer -- supports multi-tap reads via `popSample(ch, delay, false)`. No custom buffer needed.
-- **juce::AudioProcessorValueTreeState:** Parameter management -- thread-safe, handles DAW automation, XML state serialization, GUI binding.
-- **Catch2 v3.7.1:** Unit testing -- proven in reference project, fetched via CMake FetchContent.
-- **clap-juce-extensions:** CLAP format support -- not built into JUCE, requires FetchContent or submodule integration.
+- `juce::Random` — RNG for generating normalized [0,1] parameter values; already in `juce_core`, no CMake changes needed
+- `juce::AudioParameterBool` with `ParameterID{"RANDOMIZE", 2}` — automatable momentary trigger; version hint 2 is mandatory to preserve AU parameter ordering in Logic/GarageBand
+- `juce::MessageManager::callAsync` — safe cross-thread dispatch from audio thread to message thread; documented as callable from any thread
+- `setValueNotifyingHost` on `RangedAudioParameter*` — correct call for batch parameter updates: notifies DAW automation, fires ParameterAttachment callbacks, updates UI automatically
 
 ### Expected Features
 
 **Must have (table stakes):**
-- 8 delay taps with per-tap level control
-- Wet/dry mix and feedback control
-- Tempo sync with note divisions AND free-running (ms) mode
-- HP/LP filtering in the delay/feedback path
-- Stereo output with all parameters automatable
-- Preset system (state save/restore)
-- Smooth parameter changes (no clicks or zipper noise)
-- Visual feedback of tap positions
+- GUI randomize button (dice icon / "RAND") — primary user-facing surface; every plugin with randomization has one
+- Full parameter coverage: all 8 tap positions (sorted ascending), 8 tap levels, 12 feedback gains/sources, 2 filter cutoffs, 2 filter on/off, global multiplier and wet/dry
+- Clamped ranges for dangerous parameters: feedback gains normalized so sum stays under ~80% of full scale; wet/dry clamped to [0.2, 0.9]; prevents runaway oscillation and "plugin disappeared" confusion
+- Single undo transaction — must wrap all 38 changes; naive per-parameter undo floods the queue with 38 entries per press
+- Automatable trigger parameter (RANDOMIZE) — the primary differentiator; enables DAW-driven evolving randomization
 
-**Should have (differentiators -- these ARE the product):**
-- Shared serial delay line architecture (not independent buffers)
-- Full NxN feedback routing matrix with visualization
-- Cross-channel feedback routing for stereo spatial effects
-- Preset tap patterns (odd/even/rising/falling) from Verbos
-- Free tap positioning with equal-spacing as one preset
-- Doppler/tape artifacts on delay time modulation
-- Multiplier dial for proportional scaling of all tap times
-- Analog character approximation (HF roll-off in feedback path)
+**Should have (competitive):**
+- Per-group lock toggles (taps, levels, feedback, filters, globals) — most-requested refinement in synth randomizer communities; add after v1.2 based on user feedback
+- Musical grid snap for tap positions — snap to subdivisions of the delay range; add if randomized results feel unmusical in practice
 
 **Defer (v2+):**
-- Per-tap mute/solo (low complexity but not core identity)
-- Sidechain ducking
-- Advanced modulation system (DAW automation covers this)
-- LV2 format (Linux-focused, trivial to add later)
-- AAX format (requires Avid developer agreement)
+- Randomize amount / deviation slider (±N% from current values) — adds state-tracking complexity; strong v2 candidate
+- Seed-based deterministic randomization — elegant for automation, but requires seeded RNG and seed state persistence
 
 ### Architecture Approach
 
-The architecture follows a thin AudioProcessor shell delegating to dedicated DSP components. Each stereo channel gets its own DelayEngine (owns a DelayLine + 8 TapReaders + CharacterFilter). The FeedbackMatrix lives outside the per-channel engines because it needs tap outputs from both channels for cross-channel routing. The matrix is 24 sources (8 taps + 4 preset mixes, per channel) into 2 destinations (L/R delay inputs) -- not a full NxN, which keeps parameter count manageable.
+The randomizer integrates into two existing components only: `ZeitraumProcessor` (adds parameter, trigger detection, and `randomizeAllParameters()` method) and `ZeitraumEditor` (adds a `juce::TextButton` wired to that method). No DSP files change. No new UI classes are needed unless LookAndFeel customization is required. The ParameterAttachment contract means all 38 UI components (TapPositionBar, FeedbackGainCell, TapLevelFader, etc.) update automatically when `setValueNotifyingHost` is called — no manual UI refresh code needed.
 
 **Major components:**
-1. **DelayEngine (x2)** -- Per-channel: writes to shared delay line, reads 8 taps with fractional interpolation, applies character filtering
-2. **FeedbackMatrix** -- Computes feedback sums from all tap outputs across both channels, applies gain routing
-3. **CrossChannelRouter** -- Manages L-to-R and R-to-L feedback exchange at the processor level
-4. **PluginProcessor** -- JUCE lifecycle, APVTS parameter wiring, processBlock orchestration
-5. **PluginEditor** -- GUI with tap position display, feedback matrix editor, preset mix controls
+1. `ZeitraumProcessor::randomizeAllParameters()` — new method; generates random values with sorted tap positions and normalized feedback gains; calls `setValueNotifyingHost` for all 38 sound-shaping parameters from the message thread
+2. `APVTS` (modified) — add one `AudioParameterBool{"RANDOMIZE", 2}` to the global group; handles state persistence, undo, DAW automation automatically
+3. `ZeitraumEditor` (modified) — add `juce::TextButton randomizeButton`; wire `onClick` to `processorRef.randomizeAllParameters()`
+4. `processBlock` (modified) — edge-detect RANDOMIZE trigger, dispatch `callAsync` to message thread, reset trigger to 0.0
 
 ### Critical Pitfalls
 
-1. **Feedback instability** -- NxN routing makes gain > 1.0 trivially easy. Apply tanh saturation in the feedback path and add NaN/inf detection with buffer reset. Do not try to constrain the UI; make the system robust to hot feedback.
-2. **Delay time modulation clicks** -- Jumping the read pointer causes waveform discontinuities. Use Lagrange3rd fractional interpolation, smooth delay time with 50-100ms time constant, never snap the read pointer.
-3. **AU validation failure** -- Return conservative tail time (10-30s), zero all buffers in reset(), use ScopedNoDenormals, run `auval` after every DSP change. Set up `make validate` in scaffolding.
-4. **Real-time thread violations** -- No allocations in processBlock. Pre-allocate everything in prepareToPlay, use fixed-size std::array for the matrix, read parameters via atomic pointers only.
-5. **CLAP not built into JUCE** -- Must integrate clap-juce-extensions from the start. Do not attempt to add "CLAP" to FORMATS list; it will not compile.
+1. **Continuous re-randomization under DAW automation** — A naively written `if (param > 0.5f) randomize()` fires every processBlock while automation holds the value high. Prevent with `prevTriggerState` rising-edge detection. Initialize `prevTriggerState` from the saved parameter value in the constructor to also prevent session-load randomization.
+
+2. **`setValueNotifyingHost` on the audio thread** — Calling 38 times from `processBlock` acquires mutexes, fires ValueTree listeners (including GUI repaints), and causes priority inversion or deadlocks. Use `juce::MessageManager::callAsync` dispatched from processBlock; the actual writes happen on the message thread. The existing `OUTPUT_MIX` pattern makes a single infrequent reset — extending it to 38 parameters at randomizer speed is not safe without the async dispatch.
+
+3. **Feedback instability on randomize** — Drawing 12 feedback gains independently from U(0, max) frequently produces a sum exceeding 1.0, causing a transient spike before the FeedbackSaturator catches it. Prevent by normalizing: after generating raw gains, scale all by `safeMax / max(rawSum, safeMax)`. Five lines of code.
+
+4. **Trigger parameter saves as 1.0 in session state** — If the trigger is 1.0 when a session is saved, and `prevTriggerState` initializes to `false`, the next session load fires randomization immediately. Prevent by initializing `prevTriggerState = (triggerParam->load() > 0.5f)` in the constructor after APVTS setup.
+
+5. **Randomizing mode/trigger parameters** — Including RANDOMIZE, OUTPUT_MIX, TEMPO_SYNC, QUANTIZE, or NOTE_DIV in the randomization sweep causes infinite retrigger or mode confusion. Maintain an explicit allowlist of sound-shaping parameters; skip all mode and trigger parameters.
 
 ## Implications for Roadmap
 
-Based on research, suggested phase structure:
+Based on research, the feature maps cleanly to a single phase with four internal steps ordered by testability and risk isolation.
 
-### Phase 1: Project Scaffolding and Build System
-**Rationale:** Everything depends on a working build. CLAP integration is easier to add now than retrofit. The three-sisters pattern provides a complete template.
-**Delivers:** Compiling pass-through plugin in VST3, AU, and CLAP formats. Working Makefile with build/test/validate targets. AU validation passing on a no-op plugin.
-**Addresses:** Plugin infrastructure (APVTS, format wrappers, state save/restore skeleton)
-**Avoids:** CLAP integration failures (Pitfall 5), namespace inconsistency (Pitfall 11)
+### Phase 1: Parameter Foundation
+**Rationale:** Adding the RANDOMIZE parameter and caching its pointers is zero-risk and validates the build before any behavior is added. The version hint 2 requirement for AU compatibility must be set here — it cannot be changed after the parameter exists in saved sessions.
+**Delivers:** RANDOMIZE parameter visible in DAW automation lanes; plugin still builds and runs identically to v1.1
+**Addresses:** AU compatibility (ParameterID version hint), state persistence (parameter saves/restores as 0)
+**Avoids:** Pitfall 4 (trigger param in saved state) and AU parameter ordering regression
 
-### Phase 2: Core DSP Engine
-**Rationale:** The DSP engine is the foundation everything else builds on. Must be solid and well-tested before any UI or advanced features. This is where the most dangerous pitfalls live.
-**Delivers:** Functional mono delay with 8 taps, basic feedback (global, not yet matrix), parameter smoothing, character filtering. Fully unit-tested with Catch2.
-**Addresses:** Shared delay line, per-tap levels, wet/dry mix, free-running delay time, multiplier dial, doppler artifacts, analog character
-**Avoids:** Feedback instability (Pitfall 1), delay time clicks (Pitfall 2), write/read ordering (Pitfall 6), buffer size errors (Pitfall 8), interpolation boundary errors (Pitfall 14), multiplier clicks (Pitfall 15)
+### Phase 2: Randomizer Logic
+**Rationale:** Implement `randomizeAllParameters()` as a standalone method before wiring any UI or trigger. This isolates the algorithmic correctness (sorted tap positions, normalized feedback gains, clamped ranges) and allows testing via a debug call before the button exists.
+**Delivers:** `randomizeAllParameters()` callable from a test or debug menu; all 38 parameters update correctly; UI repaints without manual refresh; state saves/restores correctly after randomize
+**Addresses:** Full parameter coverage, clamped dangerous ranges, sorted tap positions
+**Avoids:** Pitfall 3 (feedback instability), anti-pattern of using `apvts.replaceState()`, anti-pattern of manual UI refresh, anti-pattern of randomizing mode params
 
-### Phase 3: Feedback Matrix and Stereo
-**Rationale:** The feedback matrix is the primary differentiator but depends on a working delay engine. Cross-channel routing adds the stereo dimension. This phase transforms a basic delay into the unique product.
-**Delivers:** Full NxN feedback routing matrix, cross-channel feedback, preset tap mixes (odd/even/rising/falling), stereo processing.
-**Addresses:** NxN feedback matrix, cross-channel routing, preset mixes, stereo output
-**Avoids:** Gain staging issues (Pitfall 7), state save/restore of matrix (Pitfall 9), mono collapse (Pitfall 10)
+### Phase 3: GUI Button
+**Rationale:** Wire the button only after the core logic is verified. Button is a `juce::TextButton` — no new class needed. This delivers the user-facing feature.
+**Delivers:** Randomize button in ZeitraumEditor; click triggers randomize; button placement fits existing layout
+**Implements:** TextButton pattern matching existing `savePresetButton`
 
-### Phase 4: Tempo Sync and Parameter Polish
-**Rationale:** Tempo sync depends on stable delay time infrastructure from Phase 2. Tap quantization and parameter naming conventions affect state persistence.
-**Delivers:** Host BPM sync with note divisions, tap time quantization (10ms steps), free tap positioning with equal-spacing preset, finalized parameter IDs for all APVTS params.
-**Addresses:** Tempo sync, tap quantization, free positioning, parameter serialization
-**Avoids:** Quantization/sample-rate interaction (Pitfall 12)
-
-### Phase 5: GUI Implementation
-**Rationale:** GUI comes last because it depends on all parameters and DSP components being finalized. Building GUI before DSP is stable leads to rework.
-**Delivers:** Clean/modern GUI with tap position display, interactive feedback matrix editor, preset mix controls, custom LookAndFeel.
-**Addresses:** Visual feedback, feedback matrix visualization, preset mix controls, all UI features
-**Avoids:** GUI repaint performance issues (Pitfall 13), thread safety between GUI and audio (Anti-Pattern 2)
-
-### Phase 6: Validation, Testing, and Release Polish
-**Rationale:** Final validation pass across all formats and sample rates. Ensures production quality.
-**Delivers:** Passing AU validation at all sample rates, tested at 64-sample buffer sizes, preset library, final gain staging audit.
-**Addresses:** AU validation (Pitfall 3), real-time safety (Pitfall 4), edge cases
-**Avoids:** Shipping-blocking validation failures
+### Phase 4: Automation Trigger Path
+**Rationale:** Add processBlock trigger detection last — it carries the most correctness risk (audio-to-message-thread dispatch, edge detection, session load safety). Isolating it to a final step means the GUI button path is already verified before the more complex automation path is added.
+**Delivers:** RANDOMIZE parameter in DAW automation lane triggers randomize; no double-triggering; trigger resets to 0 after firing; session load does not randomize
+**Avoids:** Pitfall 1 (continuous re-randomize), Pitfall 2 (audio thread safety), Pitfall 4 (session load trigger)
 
 ### Phase Ordering Rationale
 
-- Scaffolding first because all three plugin formats must build before writing DSP -- discovering build issues late is expensive.
-- DSP before feedback matrix because the matrix operates on tap outputs that the engine produces. Cannot test the matrix without a working delay line.
-- Feedback matrix before tempo sync because tempo sync is a parameter mapping concern, while the matrix is a core architectural component.
-- GUI last because every parameter must exist before building controls for it. The APVTS parameter layout must be frozen before GUI binding.
-- Validation is continuous (run `auval` after every phase) but gets a dedicated final phase for edge cases and release readiness.
+- Steps 1-3 deliver the user-visible feature (GUI button) before the automation path is added, enabling early integration testing
+- The automation path (step 4) is sequenced last because it is the only path involving audio-thread-to-message-thread communication — the hardest correctness requirement
+- Feedback gain normalization and clamped ranges belong in step 2 (logic phase) because they are algorithmic constraints, not UI concerns — fixing them late would require re-testing the entire parameter set
+- All UI update behavior is automatic via ParameterAttachment — no dedicated "UI sync" step needed
 
 ### Research Flags
 
-Phases likely needing deeper research during planning:
-- **Phase 3 (Feedback Matrix):** The 24x2 matrix parameter naming scheme, gain staging normalization, and cross-channel mono collapse mitigation all need careful design. Research the spectral radius constraint for feedback stability if a more principled approach than tanh saturation is desired.
-- **Phase 5 (GUI):** The feedback matrix editor UI is novel -- no standard JUCE pattern exists for an interactive NxN gain grid. May need custom component research.
+All phases have well-documented patterns verified against this project's own source code. No phases require additional research work.
 
-Phases with standard patterns (skip deep research):
-- **Phase 1 (Scaffolding):** Three-sisters provides a complete, verified template. Copy and adapt.
-- **Phase 2 (Core DSP):** Delay lines, interpolation, and parameter smoothing are textbook DSP with JUCE-specific implementations already proven.
-- **Phase 4 (Tempo Sync):** Standard JUCE host BPM integration via `getPlayHead()->getPosition()`.
+- **Phase 1 (Parameter Foundation):** Standard APVTS parameter addition; version hint requirement documented in JUCE source in this repo
+- **Phase 2 (Randomizer Logic):** Pattern directly present in `recallTapPreset` (lines 362-386 of PluginProcessor.cpp)
+- **Phase 3 (GUI Button):** Matches existing `savePresetButton` pattern in ZeitraumEditor
+- **Phase 4 (Automation Trigger):** Pattern directly present in `OUTPUT_MIX` (lines 234-258 of PluginProcessor.cpp); edge detection requirement is well-understood
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | JUCE 8.0.12 verified from reference project source. DelayLine API confirmed from header docs. CMake pattern proven. |
-| Features | MEDIUM | Hardware references (Verbos, Buchla 288) and competitive plugins based on training data knowledge. Feature set is well-reasoned but competitive landscape could not be verified against current product versions. |
-| Architecture | HIGH | Pattern directly adapted from working three-sisters project. DSP architecture follows standard delay line principles. |
-| Pitfalls | HIGH | Pitfalls derived from established JUCE development patterns, AU validation requirements, and standard DSP engineering. All mitigations are well-known techniques. |
+| Stack | HIGH | All APIs verified against `lib/JUCE` submodule in this repository; no new dependencies |
+| Features | MEDIUM-HIGH | Table stakes and differentiators derived from community research (KVR, Vital, HISE forums) plus official competitor docs (Valhalla, Logic Pro) |
+| Architecture | HIGH | Integration patterns verified directly against `PluginProcessor.cpp` lines 234-258 and 362-386; ParameterAttachment behavior confirmed from `FeedbackGainCell.h` and `TapPositionBar.h` |
+| Pitfalls | HIGH | All 5 critical pitfalls derived from codebase inspection; each maps to a specific existing code pattern that would be extended incorrectly |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **CLAP integration API stability:** The clap-juce-extensions project may have breaking changes. Pin to a specific commit and verify the CMake integration pattern against the current repo before starting Phase 1.
-- **Feedback matrix parameter count:** 24x2 = 48 feedback gain parameters plus 8 tap levels, positions, and global controls could exceed 80 total APVTS parameters. Verify JUCE/DAW performance with this many automatable parameters. Some DAWs slow down with very large parameter counts.
-- **Analog character tuning:** The FirstOrderTPTFilter for HF roll-off is the right tool, but the specific cutoff frequency and resonance values that sound "Verbos-like" or "Buchla-like" will need iterative tuning during Phase 2. No reference values available from research.
-- **Custom delay buffer vs. JUCE DelayLine:** STACK.md recommends JUCE's DelayLine; ARCHITECTURE.md suggests a custom circular buffer may be more efficient for 8-tap reads. Decision should be made at the start of Phase 2 with a quick benchmark. Recommendation: start with JUCE DelayLine (less code, proven correctness) and only switch to custom if profiling shows a bottleneck.
+- **UndoManager presence in APVTS:** FEATURES.md identifies single-undo-transaction as table stakes. The current APVTS constructor call was not verified to include a `juce::UndoManager*`. If absent, adding one is a constructor-signature change that must happen in Phase 1. Check `PluginProcessor.cpp` APVTS constructor call before starting Phase 2.
+- **Quantize mode interaction:** PITFALLS.md flags that randomizing TAP_POS when QUANTIZE is enabled may need per-generation snapping to a 10ms grid, OR the DSP engine handles it silently on read. Verify `DelayEngine` behavior with quantized positions during Phase 2 testing.
+- **Button placement in existing layout:** ARCHITECTURE.md recommends placing RandomizeButton directly in ZeitraumEditor rather than TopBar, but the exact layout coordinates depend on current editor bounds and existing control placement. Resolve during Phase 3.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Three-sisters reference project (`/Users/matt/src/three-sisters/`) -- CMakeLists.txt, Makefile, PluginProcessor, ParameterSmoother patterns
-- JUCE 8.0.12 source code -- DelayLine API, SmoothedValue, TPT filters, APVTS, format support
-- JUCE CMake API examples -- canonical `juce_add_plugin()` pattern
+- `src/PluginProcessor.cpp` lines 234-258 — OUTPUT_MIX apply-and-reset trigger pattern
+- `src/PluginProcessor.cpp` lines 362-386 — `recallTapPreset` batch `setValueNotifyingHost` pattern
+- `src/ui/FeedbackGainCell.h`, `TapPositionBar.h` — ParameterAttachment + ignoreCallbacks contract
+- `src/dsp/DelayEngine.h`, `FeedbackSaturator.h` — feedback gain read path; confirms no smoothing on feedback gains
+- `lib/JUCE/modules/juce_core/maths/juce_Random.h` — `nextFloat()` range [0,1), `setSeedRandomly()`
+- `lib/JUCE/modules/juce_audio_processors_headless/processors/juce_AudioProcessorParameter.h` — `setValueNotifyingHost`, `beginChangeGesture`, `endChangeGesture`, version hint ordering
 
 ### Secondary (MEDIUM confidence)
-- Verbos Multi-Delay Processor and Buchla 288 specifications -- hardware architecture and feature set
-- Competitive plugin landscape (Valhalla Delay, EchoBoy, Timeless 3, UltraTap) -- feature expectations
-- clap-juce-extensions project -- CMake integration pattern for CLAP format
+- [HISE forum: Undo/Redo with Randomization](https://forum.hise.audio/topic/9383/undo-redo-with-randomization/7) — undo queue flooding confirmed; transaction approach is the solution
+- [Steinberg VST3 developer portal: Parameters and Automation](https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Parameters+Automation/Index.html) — "no automatable parameter shall influence another automatable parameter"
+- [ValhallaUberMod TAPS Parameters](https://valhalladsp.com/2012/01/26/valhallaubermod-the-taps-parameters/) — TAPS Random behavior; precedent for tap-spacing randomization
+- [KVR Audio: randomizer UX patterns](https://www.kvraudio.com/forum/viewtopic.php?t=565834) — per-group lock expectations, selective randomization
 
 ### Tertiary (LOW confidence)
-- Specific analog character filter values -- will need iterative tuning, no reference data available
+- [Integra Audio: Top 12 Randomizer Plugins 2025](https://integraudio.com/12-best-randomizer-plugins/) — ecosystem survey; competitor feature set reference
 
 ---
-*Research completed: 2026-03-05*
+*Research completed: 2026-03-10*
 *Ready for roadmap: yes*

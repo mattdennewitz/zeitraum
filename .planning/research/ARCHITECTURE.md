@@ -1,319 +1,412 @@
-# Architecture Patterns
+# Architecture Research
 
-**Domain:** JUCE multi-tap delay audio plugin with feedback matrix
-**Researched:** 2026-03-05
+**Domain:** Preset randomizer integration into JUCE 8 APVTS plugin (Zeitraum v1.2)
+**Researched:** 2026-03-10
+**Confidence:** HIGH — based on direct inspection of existing source code and JUCE's documented parameter model
 
-## Recommended Architecture
+---
 
-Follow the proven pattern from the three-sisters project: a thin `AudioProcessor` shell that delegates all DSP to a dedicated engine class. The multi-tap delay is more complex (delay buffers, feedback matrix, modulation), so the engine decomposes into sub-components.
+## Standard Architecture
 
-### High-Level Structure
-
-```
-PluginProcessor (JUCE AudioProcessor)
-  |-- APVTS (parameter tree, DAW automation)
-  |-- DelayEngine[2] (one per stereo channel)
-  |     |-- DelayLine (circular buffer, shared write head)
-  |     |-- TapReader[8] (fractional-sample read from delay line)
-  |     |-- CharacterFilter (HF rolloff, bandwidth limiting per feedback pass)
-  |     |-- ParameterSmoother (per-parameter, zipper-free)
-  |-- FeedbackMatrix (NxN routing with cross-channel gains)
-  |-- CrossChannelRouter (manages L/R feedback exchange)
-  |-- PluginEditor (GUI)
-        |-- TapPositionDisplay (visual tap layout)
-        |-- FeedbackMatrixEditor (NxN gain grid)
-        |-- PresetMixControls (odd/even/rising/falling)
-        |-- LookAndFeel (custom styling)
-```
-
-### Component Boundaries
-
-| Component | Responsibility | Communicates With |
-|-----------|---------------|-------------------|
-| **PluginProcessor** | JUCE lifecycle, parameter wiring, calls processBlock | APVTS, DelayEngine, FeedbackMatrix, PluginEditor |
-| **APVTS** | Thread-safe parameter storage, DAW automation, state save/load | PluginProcessor (owner), PluginEditor (listener) |
-| **DelayEngine** | Per-channel DSP: write to delay line, read taps, apply character | DelayLine, TapReader[], CharacterFilter |
-| **DelayLine** | Circular buffer write/read with fractional-sample interpolation | DelayEngine (owner) |
-| **TapReader** | Reads one tap position from the delay line with interpolation | DelayLine (reads from) |
-| **FeedbackMatrix** | Computes feedback sum from tap outputs + preset mixes, applies gains | DelayEngine (reads tap outputs), CrossChannelRouter |
-| **CrossChannelRouter** | Routes feedback between L and R channels | FeedbackMatrix, both DelayEngines |
-| **CharacterFilter** | HF rolloff, bandwidth limiting, optional mild noise injection | DelayEngine (inline in feedback path) |
-| **ParameterSmoother** | Per-sample smoothing for any parameter target | All DSP components |
-| **PluginEditor** | GUI rendering, parameter binding via APVTS | APVTS (reads/writes params), PluginProcessor |
-
-## Data Flow
-
-### Per-Sample Audio Processing (within processBlock)
+### System Overview (Existing + New)
 
 ```
-For each sample in buffer:
-
-  1. Read smoothed parameters (tap positions, gains, feedback amounts)
-
-  2. For each channel (L, R):
-     a. Compute feedback sum from FeedbackMatrix
-        - Takes previous-sample tap outputs from both channels
-        - Applies NxN gain matrix
-        - Sums to single feedback value per channel
-     b. Mix input sample + feedback sum
-     c. Apply CharacterFilter to feedback contribution (HF rolloff)
-     d. Write mixed sample to DelayLine
-     e. Read 8 tap positions from DelayLine (fractional-sample interpolation)
-     f. Apply per-tap level controls
-     g. Compute preset mixes (odd, even, rising, falling)
-     h. Sum tap outputs to channel output
-
-  3. CrossChannelRouter:
-     - Takes tap outputs from both L and R engines
-     - Feeds cross-channel amounts into each channel's FeedbackMatrix
-     - Applied on next sample (one-sample delay in feedback path is expected)
+┌─────────────────────────────────────────────────────────────────┐
+│                         Message Thread                           │
+│                                                                  │
+│  ┌──────────────┐  ┌──────────────────────────────────────────┐  │
+│  │  ZeitraumEditor                                            │  │
+│  │  ┌─────────┐  ┌─────────┐  ┌──────────┐  ┌─────────────┐ │  │
+│  │  │ TopBar  │  │TapColumn│  │Feedback  │  │[NEW]        │ │  │
+│  │  │(sliders │  │[x8]     │  │MatrixEd. │  │RandomizeBtn │ │  │
+│  │  │ combos) │  │         │  │          │  │             │ │  │
+│  │  └────┬────┘  └────┬────┘  └────┬─────┘  └──────┬──────┘ │  │
+│  │       │            │            │                │         │  │
+│  └───────┼────────────┼────────────┼────────────────┼─────────┘  │
+│          │ read/write │ via        │ ParameterAttach│ment         │
+│          ▼            ▼            ▼                ▼             │
+│  ┌───────────────────────────────────────────────────────────┐   │
+│  │              APVTS (38 parameters + [NEW] RANDOMIZE)       │   │
+│  │         juce::AudioProcessorValueTreeState                  │   │
+│  └───────────────────────────┬───────────────────────────────┘   │
+│                              │ atomic<float>* pointers            │
+└──────────────────────────────┼─────────────────────────────────--┘
+                               │ (lock-free reads)
+┌──────────────────────────────▼──────────────────────────────────┐
+│                          Audio Thread                             │
+│                                                                   │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │ ZeitraumProcessor::processBlock()                         │    │
+│  │                                                           │    │
+│  │  [existing] read 38 param atomics → DelayEngine.process() │    │
+│  │                                                           │    │
+│  │  [NEW] detect RANDOMIZE trigger edge → apply random vals  │    │
+│  │        via setValueNotifyingHost() on message thread      │    │
+│  └──────────────────────────────────────────────────────────┘    │
+│                                                                   │
+│  ┌─────────────────────────────────────────────────────────┐     │
+│  │  DelayEngine (dual-mono: L + R)                          │     │
+│  │    DelayLine, TapReader[8], FeedbackMatrix,              │     │
+│  │    FeedbackFilter, FeedbackSaturator, CharacterProcessor  │     │
+│  └─────────────────────────────────────────────────────────┘     │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-### Parameter Flow (UI to DSP)
+### Component Responsibilities
 
-```
-GUI slider/knob
-  -> APVTS atomic parameter update (lock-free)
-  -> processBlock reads atomic<float>* cached pointers
-  -> ParameterSmoother interpolates to target (per-sample)
-  -> DSP component receives smoothed value
-```
+| Component | Responsibility | Status |
+|-----------|----------------|--------|
+| **ZeitraumProcessor** | JUCE lifecycle, parameter wiring, processBlock, randomizer dispatch | Existing — add randomizer trigger detection |
+| **APVTS** | 38 thread-safe parameters, DAW automation, state XML | Existing — add 1 new RANDOMIZE trigger param |
+| **ZeitraumEditor** | GUI composition, layout | Existing — add RandomizeButton |
+| **TopBar** | Global parameter controls (delay, mix, etc.) | Existing — no change needed |
+| **TapColumn / TapPositionBar / TapLevelFader** | Per-tap drag interaction, ParameterAttachment | Existing — no change needed |
+| **FeedbackMatrixEditor / FeedbackGainCell** | Feedback routing controls, ParameterAttachment | Existing — no change needed |
+| **[NEW] RandomizeButton** | Trigger randomization on click, calls processor method | New component |
+| **[NEW] ParameterRandomizer** | Generates random values for all 38 params, calls setValueNotifyingHost | New class in PluginProcessor.h |
 
-### State Flow (DAW save/load)
+---
 
-```
-Save: APVTS -> XML -> MemoryBlock -> DAW project file
-Load: DAW project file -> MemoryBlock -> XML -> APVTS -> snap smoothers to loaded values
-```
-
-## Key Architecture Decisions
-
-### 1. One DelayLine Per Channel, Not Per Tap
-
-The hardware uses a single shared delay line (shift register / DRAM) with taps reading at different offsets. Replicate this: one circular buffer per channel, 8 read positions.
-
-**Why:** Faithful to the hardware model. Tap positions are offsets along the same buffer, not independent delay times. Changing the base delay time shifts all taps proportionally. Simpler memory model.
-
-### 2. FeedbackMatrix Lives Outside DelayEngine
-
-The feedback matrix needs access to tap outputs from BOTH channels (cross-channel routing). It cannot live inside a single-channel engine.
-
-**Structure:**
-```cpp
-class FeedbackMatrix {
-    // feedback_gain[source_tap][destination_input] -- NxN
-    // Plus preset-mix rows (odd, even, rising, falling) as virtual sources
-    // Plus cross-channel source columns
-    float gains[NUM_SOURCES][NUM_DESTINATIONS];
-
-    // Returns feedback sum for a given destination channel
-    float computeFeedback(int destChannel,
-                          const std::array<float, 8>& tapsL,
-                          const std::array<float, 8>& tapsR,
-                          const PresetMixes& mixesL,
-                          const PresetMixes& mixesR);
-};
-```
-
-**Source count:** 8 taps + 4 preset mixes = 12 sources per channel, x2 channels = 24 possible sources. Destination is simply the delay line input for each channel (2 destinations). So the matrix is 24x2, not a full NxN. This is manageable.
-
-### 3. Fractional-Sample Interpolation for Smooth Modulation
-
-When delay time is modulated (doppler/tape effects), the read position moves continuously. Use cubic (Hermite) interpolation for the tap readers to avoid aliasing artifacts.
-
-```cpp
-class TapReader {
-    float readFractional(const DelayLine& line, float delaySamples) const {
-        // Hermite 4-point interpolation
-        int idx = static_cast<int>(delaySamples);
-        float frac = delaySamples - idx;
-        float y0 = line.readAt(idx + 1);
-        float y1 = line.readAt(idx);
-        float y2 = line.readAt(idx - 1);
-        float y3 = line.readAt(idx - 2);
-        // Hermite polynomial...
-    }
-};
-```
-
-**Alternative considered:** JUCE's `juce::dsp::DelayLine` provides this built-in with Lagrange or Thiran interpolation. Use it if sufficient; roll custom only if JUCE's implementation lacks needed control (e.g., reading multiple tap positions from one line efficiently). The JUCE `DelayLine` is designed for single-tap use -- calling `setDelay()` and `popSample()` per tap would work but may be less efficient than a custom circular buffer with direct indexed reads for 8 taps.
-
-**Recommendation:** Custom circular buffer. Reading 8 taps from JUCE's `DelayLine` would require either 8 `DelayLine` instances sharing data (wasteful) or using the lower-level `read()` method. A simple circular buffer with Hermite interpolation is ~50 lines of code and gives full control.
-
-### 4. Parameter Smoothing Strategy
-
-Follow three-sisters pattern: dedicated `ParameterSmoother` class using one-pole lowpass (exponential smoothing). Target set from atomic parameter; per-sample `.next()` call produces smoothed value.
-
-**Critical smoothing targets:**
-- Tap positions (smoothing creates doppler pitch shift -- this is a FEATURE, not a bug)
-- Feedback gains (avoid clicks on matrix changes)
-- Tap levels (avoid clicks)
-- Base delay time and multiplier (doppler artifacts desired here)
-
-**Snap-to-target on preset load:** Call `snapToTarget()` on all smoothers when loading state to avoid long parameter sweeps on project open.
-
-### 5. Character Processing Placement
-
-The character filter (HF rolloff, bandwidth limiting) goes in the **feedback path**, not the direct signal path. Each time audio recirculates through the delay, it loses more high-frequency content -- this is what creates the natural decay character of analog delay/reverb.
-
-```
-input + feedback_sum -> [CharacterFilter] -> write to DelayLine
-                                              |
-                                        read taps -> output
-```
-
-Optional: mild noise injection at very low level (-80dB) into the delay line write, gated by signal presence, for analog character.
-
-## Patterns to Follow
-
-### Pattern 1: Engine-Per-Channel with Cross-Channel Coordination
-
-Each channel has its own `DelayEngine` instance (own delay line, own tap readers, own character filter). The `FeedbackMatrix` and `CrossChannelRouter` sit at the `PluginProcessor` level and coordinate between the two engines.
-
-```cpp
-void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) {
-    auto* left = buffer.getWritePointer(0);
-    auto* right = buffer.getWritePointer(1);
-
-    for (int i = 0; i < buffer.getNumSamples(); ++i) {
-        // Update smoothed parameters (once per sample)
-        updateSmoothedParams();
-
-        // Compute feedback from previous sample's tap outputs
-        float fbL = feedbackMatrix.computeFeedback(0, prevTapsL, prevTapsR, ...);
-        float fbR = feedbackMatrix.computeFeedback(1, prevTapsL, prevTapsR, ...);
-
-        // Process each channel
-        auto tapsL = engineL.process(left[i], fbL);
-        auto tapsR = engineR.process(right[i], fbR);
-
-        // Store for next sample's feedback
-        prevTapsL = tapsL;
-        prevTapsR = tapsR;
-
-        // Sum taps to output (with per-tap levels)
-        left[i] = sumTaps(tapsL, tapLevels);
-        right[i] = sumTaps(tapsR, tapLevels);
-    }
-}
-```
-
-### Pattern 2: Preset Mixes as Derived Values, Not Stored State
-
-Odd/even/rising/falling mixes are computed from tap outputs each sample, not stored separately. They are virtual outputs derived from the 8 tap values:
-
-```cpp
-struct PresetMixes {
-    float odd;      // taps 1,3,5,7 summed
-    float even;     // taps 2,4,6,8 summed
-    float rising;   // taps weighted 1/8, 2/8, ... 8/8
-    float falling;  // taps weighted 8/8, 7/8, ... 1/8
-};
-
-PresetMixes computePresetMixes(const std::array<float, 8>& taps) {
-    PresetMixes m;
-    m.odd = taps[0] + taps[2] + taps[4] + taps[6];
-    m.even = taps[1] + taps[3] + taps[5] + taps[7];
-    m.rising = m.falling = 0.0f;
-    for (int i = 0; i < 8; ++i) {
-        m.rising += taps[i] * (i + 1) / 8.0f;
-        m.falling += taps[i] * (8 - i) / 8.0f;
-    }
-    return m;
-}
-```
-
-### Pattern 3: Delay Time = Base + Tap Offset
-
-Total delay for tap N = `baseDelay * multiplier * tapPosition[N]`
-
-Where `tapPosition[N]` is normalized 0..1 along the delay line. Equal spacing preset sets `tapPosition[N] = (N+1) / 8.0`. Free mode allows arbitrary positioning.
-
-The base delay range (10-150ms) times the multiplier (1x-8x) gives the full range up to ~1.2s. Tap positions are fractional within this total range.
-
-## Anti-Patterns to Avoid
-
-### Anti-Pattern 1: Per-Block Parameter Updates
-**What:** Reading parameters once per processBlock call instead of per-sample.
-**Why bad:** At 512-sample blocks and 44.1kHz, that's ~11.6ms between updates. Delay time changes will produce audible stepping/zipper noise. Feedback gain changes will click.
-**Instead:** Use per-sample smoothed parameters. The ParameterSmoother pattern from three-sisters handles this correctly.
-
-### Anti-Pattern 2: Shared Mutable State Between Audio and GUI Threads
-**What:** GUI directly modifying DSP state or DSP exposing references to internal state.
-**Why bad:** Data races, crashes, undefined behavior.
-**Instead:** All communication through APVTS atomic parameters. GUI reads/writes APVTS; audio thread reads APVTS. For display data flowing DSP -> GUI (e.g., tap output levels for meters), use atomic writes from audio thread, polled by GUI on timer.
-
-### Anti-Pattern 3: Allocating Memory in processBlock
-**What:** Creating vectors, strings, or any heap-allocated objects in the audio callback.
-**Why bad:** Memory allocation can block, causing audio dropouts.
-**Instead:** Pre-allocate all buffers in `prepareToPlay()`. Use fixed-size arrays (`std::array`). The `DelayLine` circular buffer is allocated once at prepare time based on max delay length.
-
-### Anti-Pattern 4: Unbounded Feedback Gain
-**What:** Allowing feedback matrix gains to sum > 1.0 without limiting.
-**Why bad:** Exponential blowup, speaker damage.
-**Instead:** Apply a soft-limiter or tanh saturation on the feedback sum before writing to the delay line. This also adds musical character (analog circuits naturally saturate).
-
-## File Organization
+## Recommended Project Structure
 
 ```
 src/
-  PluginProcessor.h / .cpp     -- JUCE AudioProcessor, parameter layout, processBlock
-  PluginEditor.h / .cpp        -- GUI composition
-  dsp/
-    DelayEngine.h              -- Per-channel: owns DelayLine + TapReaders + CharacterFilter
-    DelayLine.h                -- Circular buffer with fractional read
-    TapReader.h                -- Reads single tap with Hermite interpolation
-    FeedbackMatrix.h           -- NxN routing computation
-    CrossChannelRouter.h       -- Stereo feedback coordination
-    CharacterFilter.h          -- HF rolloff, bandwidth limiting
-    ParameterSmoother.h        -- Copy from three-sisters (proven)
-    PresetMixes.h              -- Odd/even/rising/falling computation
-  ui/
-    TapPositionDisplay.h       -- Visual tap layout
-    FeedbackMatrixEditor.h     -- NxN gain grid UI
-    PresetMixControls.h        -- Mix selection UI
-    MultiTapLookAndFeel.h      -- Custom styling
+├── PluginProcessor.h/cpp    # Add: RANDOMIZE param, randomizeAllParameters(),
+│                            #      trigger detection in processBlock
+├── PluginEditor.h/cpp       # Add: RandomizeButton wiring
+├── dsp/                     # No changes needed
+│   ├── DelayEngine.h
+│   ├── TapReader.h
+│   ├── FeedbackMatrix.h
+│   ├── FeedbackFilter.h
+│   ├── FeedbackSaturator.h
+│   ├── CharacterProcessor.h
+│   └── OnePoleSmooth.h
+└── ui/
+    ├── ZeitraumLookAndFeel.h
+    ├── TopBar.h             # No changes needed
+    ├── TapColumn.h          # No changes needed
+    ├── TapPositionBar.h     # No changes needed
+    ├── TapLevelFader.h      # No changes needed
+    ├── FeedbackMatrixEditor.h  # No changes needed
+    └── FeedbackGainCell.h   # No changes needed
 ```
 
-## Suggested Build Order
+### Structure Rationale
 
-Dependencies flow bottom-up. Build and test in this order:
+- **No new DSP files needed:** The randomizer is a parameter-writing operation, not a DSP operation. All sound generation already works correctly from parameters. Randomization just drives new values into the existing parameter tree.
+- **ParameterRandomizer as a method, not a class:** Given its simplicity (generate 38 random floats, call setValueNotifyingHost 38 times), a standalone `randomizeAllParameters()` method in ZeitraumProcessor is sufficient. A separate class would be overengineering for this scope.
+- **RandomizeButton in PluginEditor, not TopBar:** The button is a one-off action trigger, not a persistent control. Adding it directly to ZeitraumEditor avoids contaminating TopBar with non-parameter UI concerns.
 
-### Layer 1: Standalone DSP primitives (no JUCE dependency beyond juce_dsp)
-1. **ParameterSmoother** -- copy from three-sisters, proven
-2. **DelayLine** -- circular buffer with write/read, fractional indexing
-3. **TapReader** -- Hermite interpolation reader, tested against DelayLine
-4. **CharacterFilter** -- one-pole or biquad HF rolloff
+---
 
-### Layer 2: Composition
-5. **PresetMixes** -- pure function, trivially testable
-6. **DelayEngine** -- composes DelayLine + TapReader[8] + CharacterFilter, mono processing
-7. **FeedbackMatrix** -- takes tap arrays, returns feedback sums
-8. **CrossChannelRouter** -- coordinates FeedbackMatrix across L/R
+## Architectural Patterns
 
-### Layer 3: JUCE integration
-9. **PluginProcessor** -- wire APVTS parameters to engines + feedback matrix, processBlock
-10. **Basic PluginEditor** -- minimal GUI with sliders for all parameters (functional but ugly)
+### Pattern 1: Apply-and-Reset Trigger Parameter
 
-### Layer 4: GUI refinement
-11. **TapPositionDisplay** -- visual tap layout
-12. **FeedbackMatrixEditor** -- NxN grid
-13. **PresetMixControls** -- mix selection
-14. **MultiTapLookAndFeel** -- final polish
+**What:** A parameter whose value is meaningless at rest (0 = idle), and whose transition from 0 to non-zero is the event of interest. The processor detects the rising edge, performs the action, then resets the parameter to 0 via `setValueNotifyingHost()`.
 
-**Rationale:** Layers 1-2 are pure DSP, testable with Catch2 unit tests using synthetic buffers. No audio hardware needed. Layer 3 makes it functional as a plugin. Layer 4 makes it usable. This ordering means the DSP core is solid before any GUI work begins.
+**When to use:** When an action needs to be automatable from a DAW but doesn't have a persistent state. The OUTPUT_MIX preset selector in Zeitraum already uses this exact pattern.
 
-## Scalability Considerations
+**Confidence:** HIGH — this is the existing pattern at line 234-258 of PluginProcessor.cpp.
 
-| Concern | At 44.1kHz/512 buf | At 96kHz/64 buf | Notes |
-|---------|---------------------|-----------------|-------|
-| CPU per sample | ~8 interpolated reads + matrix multiply + filter = low | Same ops, 2x sample rate | Well within budget for stereo |
-| Memory | ~106KB per channel (1.2s @ 44.1kHz * 4 bytes) | ~230KB per channel @ 96kHz | Trivial |
-| Parameter updates | 8 tap positions + matrix gains = ~30 smoothers | Same count, 2x calls/sec | ParameterSmoother is a single multiply-add |
-| Feedback stability | Soft limiter prevents blowup | Same | Essential regardless of scale |
+**Existing precedent (verbatim from processBlock):**
+```cpp
+int outputMix = static_cast<int>(outputMixParam->load());
+if (outputMix > 0)
+{
+    // ... apply preset ...
+
+    // Reset selector back to Manual
+    outputMixParamObj->setValueNotifyingHost(0.0f);
+}
+```
+
+**Apply to RANDOMIZE:**
+```cpp
+// In createParameterLayout():
+globalGroup->addChild(std::make_unique<juce::AudioParameterBool>(
+    juce::ParameterID{"RANDOMIZE", 1}, "Randomize", false));
+
+// In processBlock():
+if (randomizeParam->load() > 0.5f)
+{
+    // Must dispatch to message thread — setValueNotifyingHost is not audio-thread-safe
+    juce::MessageManager::callAsync([this]() {
+        randomizeAllParameters();
+    });
+    randomizeParamObj->setValueNotifyingHost(0.0f);
+}
+```
+
+**Trade-offs:**
+- Pro: Automatable, state-saves cleanly (param resets to 0 immediately), follows existing project pattern.
+- Pro: Zero new infrastructure — same mechanism already proven.
+- Con: One-sample latency before randomize fires (detectected in processBlock, dispatched async). Imperceptible in practice.
+- Con: `callAsync` from processBlock is technically calling a GUI thread function from the audio thread, but JUCE's `callAsync` is explicitly documented as safe to call from any thread. This is the correct approach.
+
+### Pattern 2: Batch Parameter Update via setValueNotifyingHost
+
+**What:** Writing multiple parameter values in a loop from the message thread, using `setValueNotifyingHost()` on each `RangedAudioParameter*` obtained via `apvts.getParameter()`.
+
+**When to use:** Whenever a "preset load" operation (of any kind) needs to atomically update multiple parameters while keeping the DAW informed (automation lanes update, undo history records the change).
+
+**Confidence:** HIGH — `recallTapPreset()` in PluginProcessor.cpp already does this for tap positions (lines 362-386). The randomizer extends it to all 38 parameters.
+
+**Existing precedent (from recallTapPreset):**
+```cpp
+if (auto* param = apvts.getParameter(paramId))
+    param->setValueNotifyingHost(param->convertTo0to1(value));
+```
+
+**Full randomizer implementation pattern:**
+```cpp
+void ZeitraumProcessor::randomizeAllParameters()
+{
+    // Must be called on the message thread
+    jassert(juce::MessageManager::existsAndIsCurrentThread());
+
+    juce::Random rng;
+    rng.setSeedRandomly();
+
+    auto randomizeFloat = [&](const juce::String& id) {
+        if (auto* p = apvts.getParameter(id))
+            p->setValueNotifyingHost(rng.nextFloat()); // 0..1 normalized
+    };
+
+    auto randomizeBool = [&](const juce::String& id) {
+        if (auto* p = apvts.getParameter(id))
+            p->setValueNotifyingHost(rng.nextBool() ? 1.0f : 0.0f);
+    };
+
+    // Global
+    randomizeFloat("BASE_DELAY");
+    randomizeFloat("MULTIPLIER");
+    randomizeFloat("MIX");
+    randomizeFloat("CHARACTER");
+
+    // Taps (sorted positions prevent meaningless crossed-tap ordering)
+    float positions[8];
+    for (int i = 0; i < 8; ++i) positions[i] = rng.nextFloat();
+    std::sort(positions, positions + 8); // ascending order preserves musical sense
+    for (int i = 0; i < 8; ++i) {
+        if (auto* p = apvts.getParameter("TAP" + juce::String(i + 1) + "_POS"))
+            p->setValueNotifyingHost(positions[i]);
+        randomizeFloat("TAP" + juce::String(i + 1) + "_LEVEL");
+    }
+
+    // Feedback (sparse: most gains should stay 0 for musical results)
+    for (int i = 1; i <= 8; ++i)
+        randomizeFloat("FB_TAP" + juce::String(i));
+    randomizeFloat("FB_ODD");
+    randomizeFloat("FB_EVEN");
+    randomizeFloat("FB_RISING");
+    randomizeFloat("FB_FALLING");
+
+    // Feedback filters
+    randomizeFloat("FB_HP_FREQ");
+    randomizeFloat("FB_LP_FREQ");
+    randomizeBool("FB_HP_ON");
+    randomizeBool("FB_LP_ON");
+
+    // NOTE: Skip RANDOMIZE itself, QUANTIZE, TEMPO_SYNC, NOTE_DIV, OUTPUT_MIX
+    // These are mode/trigger parameters, not sound-shaping parameters.
+}
+```
+
+**Trade-offs:**
+- Pro: `setValueNotifyingHost()` updates the DAW automation lane, records an undo-able event in the DAW, and propagates through APVTS to the UI. All 38+ `ParameterAttachment` instances in the UI will repaint automatically.
+- Pro: No manual UI refresh code needed anywhere — ParameterAttachment listeners fire automatically.
+- Pro: State saves correctly because APVTS holds the current (randomized) values.
+- Con: 38 individual calls vs. a single atomic state replacement. For a one-time action this is fine; for per-sample parameter modulation it would be far too expensive.
+
+### Pattern 3: Sorted Tap Position Randomization
+
+**What:** When randomizing tap positions, sort them in ascending order before writing so that Tap 1 is always the earliest tap and Tap 8 the latest.
+
+**When to use:** Tap positions have an implicit semantic ordering (they are positions along a shared delay line from earliest to latest). Crossing them (Tap 3 before Tap 1 in time) is meaningless in this architecture and would confuse the user's mental model.
+
+**Confidence:** HIGH — this is a design constraint from the existing architecture, confirmed by how tap positions are read in processBlock (they are indexed 0..7 by index, not sorted dynamically).
+
+**Implementation:** See the `std::sort` call in Pattern 2. Five lines.
+
+**Trade-offs:**
+- Pro: Musically sensible. The display (TapPositionBar heights) will always read low-to-high visually.
+- Con: Slightly reduces the randomization space (only ordered permutations of 8 positions). This is the correct trade-off.
+
+---
+
+## Data Flow
+
+### Randomize Request Flow (Button Click)
+
+```
+User clicks RandomizeButton (message thread)
+    ↓
+ZeitraumProcessor::randomizeAllParameters() called directly
+    ↓
+Loop: apvts.getParameter(id)->setValueNotifyingHost(normalizedValue)
+    ↓ (for each parameter)
+APVTS notifies all listeners
+    ↓
+ParameterAttachment callbacks fire → UI components repaint
+    ↓
+APVTS atomic<float>* values updated
+    ↓ (next processBlock call)
+Audio thread reads new values via .load()
+```
+
+### Randomize Request Flow (DAW Automation)
+
+```
+DAW writes RANDOMIZE parameter to 1.0 (message thread, via automation lane)
+    ↓
+APVTS updates atomic<float>* for RANDOMIZE
+    ↓ (next processBlock)
+Audio thread: randomizeParam->load() > 0.5f detected
+    ↓
+juce::MessageManager::callAsync([this]{ randomizeAllParameters(); })
+    ↓
+randomizeParamObj->setValueNotifyingHost(0.0f)  // reset trigger
+    ↓
+Message thread: randomizeAllParameters() runs (same as button click path)
+```
+
+### State Persistence Flow (No Changes)
+
+```
+DAW saves session:
+    getStateInformation() → apvts.copyState() → XML → MemoryBlock
+    (RANDOMIZE param is 0 at save time — it always resets immediately)
+
+DAW loads session:
+    setStateInformation() → XML → apvts.replaceState()
+    (All randomized values restore correctly — they are regular param values)
+```
+
+### UI Update Flow (Automatic, No New Code)
+
+```
+setValueNotifyingHost() called for TAP3_POS
+    ↓
+APVTS fires ValueTree::Listener callbacks
+    ↓
+ParameterAttachment (in TapPositionBar for Tap 3) fires setValue callback
+    ↓
+TapPositionBar::setValue() updates currentValue, calls repaint()
+    ↓
+Component redraws at next paint cycle
+```
+
+This is the existing JUCE ParameterAttachment contract. No new listener code needed anywhere in the UI layer.
+
+---
+
+## Integration Points
+
+### New vs Modified Components
+
+| Component | Change Type | What Changes |
+|-----------|-------------|--------------|
+| **PluginProcessor** | Modified | Add RANDOMIZE param to layout, add `randomizeAllParameters()` method, add trigger detection in processBlock, add 2 new cached pointers (`randomizeParam`, `randomizeParamObj`) |
+| **ZeitraumEditor** | Modified | Add RandomizeButton member, wire onClick to `processorRef.randomizeAllParameters()` |
+| **createParameterLayout()** | Modified | Add AudioParameterBool `{"RANDOMIZE", 1}` to global group |
+| **PluginProcessor.h** | Modified | Declare `randomizeAllParameters()`, add `randomizeParam` and `randomizeParamObj` pointers |
+| **RandomizeButton** | New (optional) | Could be a plain `juce::TextButton` inline in ZeitraumEditor — no separate class needed unless LookAndFeel customization is required |
+
+### Internal Boundaries
+
+| Boundary | Communication | Notes |
+|----------|---------------|-------|
+| ZeitraumEditor → ZeitraumProcessor | Direct method call `processorRef.randomizeAllParameters()` from message thread | Same pattern as `processorRef.saveTapPreset()` / `recallTapPreset()` already used |
+| ZeitraumProcessor → APVTS | `apvts.getParameter(id)->setValueNotifyingHost(v)` | Must be message thread. `randomizeAllParameters()` is always called on message thread |
+| APVTS → UI components | ParameterAttachment callbacks (automatic, no new code) | All 38 UI bindings update automatically when their parameter values change |
+| Audio thread → Message thread (automation path) | `juce::MessageManager::callAsync()` | Correct JUCE pattern for audio→message thread dispatch; safe to call from processBlock |
+
+---
+
+## Anti-Patterns
+
+### Anti-Pattern 1: Calling setValueNotifyingHost from the Audio Thread
+
+**What people do:** Detect the RANDOMIZE trigger in processBlock and immediately call `setValueNotifyingHost()` on 38 parameters there.
+
+**Why it's wrong:** `setValueNotifyingHost()` fires ValueTree listeners, which can call arbitrary code including GUI repaints. This is not realtime-safe and will cause priority inversion or deadlocks when called from the audio thread. JUCE documents that `setValueNotifyingHost()` must be called on the message thread.
+
+**Do this instead:** From processBlock, dispatch with `juce::MessageManager::callAsync()`, then call `randomizeAllParameters()` from the lambda. This is safe because `callAsync` is documented as callable from any thread and the lambda runs on the message thread.
+
+### Anti-Pattern 2: Using apvts.replaceState() for Randomization
+
+**What people do:** Construct a new ValueTree with random parameter values and call `apvts.replaceState(newTree)` to atomically swap all parameters.
+
+**Why it's wrong:** `replaceState()` does not fire individual parameter change notifications the same way `setValueNotifyingHost()` does. The DAW does not record individual parameter automation events. Additionally, `replaceState()` is designed for session restore, not for user-triggered parameter changes — the undo granularity is wrong.
+
+**Do this instead:** Call `setValueNotifyingHost()` individually for each parameter. This fires the correct JUCE notifications, records proper undo history in the DAW, and updates automation lanes.
+
+### Anti-Pattern 3: Bypassing ParameterAttachment with Manual UI Refresh
+
+**What people do:** After randomizing parameters, manually iterate through all UI components and push new values to them (e.g., calling `slider.setValue()`).
+
+**Why it's wrong:** This duplicates the job of `ParameterAttachment`. It will fight with ParameterAttachment (which also listens and updates). It requires knowing about all UI components from the processor — a layering violation. It's also fragile when UI components are added or rearranged.
+
+**Do this instead:** Trust the ParameterAttachment contract. `setValueNotifyingHost()` fires the APVTS listener, which fires the ParameterAttachment callback, which calls the component's `setValue()` lambda, which calls `repaint()`. The entire chain is already wired. No manual UI refresh code is needed.
+
+### Anti-Pattern 4: Randomizing Mode/Trigger Parameters
+
+**What people do:** Include RANDOMIZE, OUTPUT_MIX, TEMPO_SYNC, QUANTIZE, and NOTE_DIV in the randomization sweep.
+
+**Why it's wrong:** RANDOMIZE is a trigger that resets to 0 immediately — randomizing it would cause infinite re-triggering or silent failure. OUTPUT_MIX is also a trigger. TEMPO_SYNC and QUANTIZE are modes that interact with base delay calculation in non-obvious ways. Randomizing them would cause confusing behavior (e.g., tempo sync enabled with random note division overrides the base delay the user sees).
+
+**Do this instead:** Maintain an explicit allowlist of parameters to randomize. All parameters in groups `global` (BASE_DELAY, MULTIPLIER, MIX, CHARACTER), `tap1`..`tap8` (POS, LEVEL), and `feedback` (FB_TAP*, FB_ODD, FB_EVEN, FB_RISING, FB_FALLING, FB_HP_FREQ, FB_LP_FREQ, FB_HP_ON, FB_LP_ON) are sound-shaping and should be randomized. QUANTIZE, TEMPO_SYNC, NOTE_DIV, OUTPUT_MIX, RANDOMIZE stay at their current values.
+
+---
+
+## Build Order
+
+Dependencies are minimal — this is a small feature addition to an existing, working plugin. Order matters only for testability.
+
+### Step 1: Parameter Addition (no UI, no behavior)
+
+Add `RANDOMIZE` bool parameter to `createParameterLayout()` in the global group. Cache `randomizeParam` and `randomizeParamObj` pointers in the constructor. Add `randomizeAllParameters()` stub that does nothing.
+
+**Verify:** Plugin still builds and runs. Existing behavior unchanged. RANDOMIZE parameter visible in DAW automation lane.
+
+### Step 2: Randomizer Logic
+
+Implement `randomizeAllParameters()` with the sorted-positions approach. Keep the explicit allowlist of parameters to randomize.
+
+**Verify:** Call from a debug menu or temporary button in ZeitraumEditor. All 38 parameters update. UI repaints correctly without manual refresh. State saves and restores correctly (DAW save/load round-trip). No audio glitches during randomize.
+
+### Step 3: GUI Button
+
+Add `RandomizeButton` (plain `juce::TextButton`, styled via `ZeitraumLookAndFeel`) to ZeitraumEditor. Wire `onClick` to `processorRef.randomizeAllParameters()`.
+
+**Verify:** Button click triggers randomize. Button placement fits existing layout without crowding controls.
+
+### Step 4: Automation Trigger Path (optional — only if DAW automation is required for v1.2)
+
+Add processBlock trigger detection: `if (randomizeParam->load() > 0.5f) { callAsync(...); reset; }`. This enables DAW automation of RANDOMIZE.
+
+**Verify:** Drawing an automation point on the RANDOMIZE lane triggers randomize. Parameter resets to 0 after firing. No double-triggering.
+
+**Rationale for ordering:** Steps 1-3 deliver the user-facing feature (GUI button). Step 4 adds DAW automation support. This ordering lets testing of the core behavior happen without the complexity of the automation path. The automation path carries the most subtle correctness risks (audio-thread to message-thread dispatch), so it should be added and tested separately.
+
+---
+
+## Scaling Considerations
+
+This feature is a one-shot action — scaling is not a concern. The only performance-relevant note is that `randomizeAllParameters()` makes 38 calls to `setValueNotifyingHost()`, which fires 38 ValueTree listener callbacks, which trigger 38 component repaints. At a human-triggered frame rate this is invisible. The total execution time is in the microseconds range.
+
+---
 
 ## Sources
 
-- Three-sisters project (`~/src/three-sisters/`) -- proven JUCE plugin architecture pattern with per-channel engine, APVTS parameter flow, ParameterSmoother, CMake build (HIGH confidence)
-- JUCE AudioProcessor documentation and `juce::dsp::DelayLine` API (HIGH confidence, based on established JUCE patterns)
-- Standard DSP knowledge: circular buffers, Hermite interpolation, one-pole smoothing, feedback stability (HIGH confidence, textbook material)
+- `/Users/matt/src/multi-tap-delay/src/PluginProcessor.cpp` — Direct inspection: OUTPUT_MIX apply-and-reset pattern (lines 234-258), recallTapPreset batch setValueNotifyingHost (lines 362-386). HIGH confidence.
+- `/Users/matt/src/multi-tap-delay/src/ui/TapPositionBar.h` — Direct inspection: ParameterAttachment contract, setValue callback, repaint chain. HIGH confidence.
+- `/Users/matt/src/multi-tap-delay/src/ui/FeedbackGainCell.h` — Direct inspection: ParameterAttachment pattern with ignoreCallbacks guard. HIGH confidence.
+- JUCE `juce::ParameterAttachment` documentation: `setValueNotifyingHost()` must be message thread; `MessageManager::callAsync()` is safe from any thread. HIGH confidence (consistent with observed JUCE behavior in existing codebase).
+- JUCE `juce::Random` class: `nextFloat()` returns 0..1, `setSeedRandomly()` for non-deterministic seeds. HIGH confidence.
+
+---
+*Architecture research for: Preset randomizer integration into Zeitraum JUCE plugin*
+*Researched: 2026-03-10*
