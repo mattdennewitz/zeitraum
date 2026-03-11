@@ -9,11 +9,11 @@ Requirements for v1.2 Somewhat-Controlled Random Settings.
 
 ### Randomizer
 
-- [ ] **RAND-01**: Randomize button generates new random values for all sound-shaping parameters (tap positions, levels, feedback routing, filters, multiplier, wet/dry)
-- [ ] **RAND-02**: Randomized tap positions are sorted ascending (Tap 1 earliest in delay line)
-- [ ] **RAND-03**: Feedback gain sum is normalized to ~80% max to prevent transient instability
-- [ ] **RAND-04**: Wet/dry is clamped to [0.2, 0.9] range during randomization
-- [ ] **RAND-05**: Mode and trigger parameters (OUTPUT_MIX, TEMPO_SYNC, QUANTIZE, NOTE_DIV, RANDOMIZE) are excluded from randomization
+- [x] **RAND-01**: Randomize button generates new random values for all sound-shaping parameters (tap positions, levels, feedback routing, filters, multiplier, wet/dry)
+- [x] **RAND-02**: Randomized tap positions are sorted ascending (Tap 1 earliest in delay line)
+- [x] **RAND-03**: Feedback gain sum is normalized to ~80% max to prevent transient instability
+- [x] **RAND-04**: Wet/dry is clamped to [0.2, 0.9] range during randomization
+- [x] **RAND-05**: Mode and trigger parameters (OUTPUT_MIX, TEMPO_SYNC, QUANTIZE, NOTE_DIV, RANDOMIZE) are excluded from randomization
 
 ### GUI
 
@@ -62,11 +62,11 @@ Requirements for v1.2 Somewhat-Controlled Random Settings.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | FB-01 | Phase 6 | Complete |
-| RAND-01 | Phase 7 | Pending |
-| RAND-02 | Phase 7 | Pending |
-| RAND-03 | Phase 7 | Pending |
-| RAND-04 | Phase 7 | Pending |
-| RAND-05 | Phase 7 | Pending |
+| RAND-01 | Phase 7 | Complete |
+| RAND-02 | Phase 7 | Complete |
+| RAND-03 | Phase 7 | Complete |
+| RAND-04 | Phase 7 | Complete |
+| RAND-05 | Phase 7 | Complete |
 | GUI-01 | Phase 7 | Pending |
 | AUTO-01 | Phase 8 | Pending |
 | AUTO-02 | Phase 8 | Pending |
