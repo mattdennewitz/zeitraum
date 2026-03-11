@@ -17,7 +17,7 @@ Requirements for v1.2 Somewhat-Controlled Random Settings.
 
 ### GUI
 
-- [ ] **GUI-01**: Randomize button visible in plugin editor UI
+- [x] **GUI-01**: Randomize button visible in plugin editor UI
 
 ### Automation
 
@@ -67,7 +67,7 @@ Requirements for v1.2 Somewhat-Controlled Random Settings.
 | RAND-03 | Phase 7 | Complete |
 | RAND-04 | Phase 7 | Complete |
 | RAND-05 | Phase 7 | Complete |
-| GUI-01 | Phase 7 | Pending |
+| GUI-01 | Phase 7 | Complete |
 | AUTO-01 | Phase 8 | Pending |
 | AUTO-02 | Phase 8 | Pending |
 | AUTO-03 | Phase 8 | Pending |
